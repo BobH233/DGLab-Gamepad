@@ -38,6 +38,8 @@ class ControlDesk extends ChangeNotifier {
       state.touchPoint?.active,
       state.touchGrid,
       for (final id in channelIds) state.touchBalance[id],
+      for (final id in channelIds) state.touchHorizontalSplits[id]?.join(':'),
+      for (final id in channelIds) state.touchVerticalSplits[id]?.join(':'),
       for (final id in channelIds)
         [
           state.channels[id]!.base,
@@ -167,6 +169,16 @@ class ControlDesk extends ChangeNotifier {
                 engine.state.touchBalance[id] = value.toDouble().clamp(0, 1);
               }
             }
+            final horizontal = touch['horizontal'] as Map?;
+            final vertical = touch['vertical'] as Map?;
+            for (final id in channelIds) {
+              _restoreSplits(
+                engine.state.touchHorizontalSplits,
+                id,
+                horizontal,
+              );
+              _restoreSplits(engine.state.touchVerticalSplits, id, vertical);
+            }
           }
         }
       } catch (e) {
@@ -292,6 +304,8 @@ class ControlDesk extends ChangeNotifier {
         'touch': {
           'grid': engine.state.touchGrid,
           'balance': engine.state.touchBalance,
+          'horizontal': engine.state.touchHorizontalSplits,
+          'vertical': engine.state.touchVerticalSplits,
         },
       });
       persistenceError = store == null ? '本地存储不可用' : null;
@@ -380,6 +394,72 @@ class ControlDesk extends ChangeNotifier {
     engine.publish();
     _notify();
     if (persist) unawaited(save());
+  }
+
+  void setTouchHorizontalSplits(
+    String id,
+    double first,
+    double second, {
+    bool persist = true,
+  }) {
+    _setTouchSplits(
+      engine.state.touchHorizontalSplits,
+      id,
+      first,
+      second,
+      persist: persist,
+    );
+  }
+
+  void setTouchVerticalSplits(
+    String id,
+    double first,
+    double second, {
+    bool persist = true,
+  }) {
+    _setTouchSplits(
+      engine.state.touchVerticalSplits,
+      id,
+      first,
+      second,
+      persist: persist,
+    );
+  }
+
+  void _setTouchSplits(
+    Map<String, List<double>> target,
+    String id,
+    double first,
+    double second, {
+    required bool persist,
+  }) {
+    if (!channelIds.contains(id)) return;
+    final a = first.clamp(0.12, 0.76);
+    final b = second.clamp(a + 0.12, 0.88);
+    target[id] = [a, b];
+    engine.publish();
+    _notify();
+    if (persist) unawaited(save());
+  }
+
+  void _restoreSplits(
+    Map<String, List<double>> target,
+    String id,
+    Map? source,
+  ) {
+    final value = source?[id];
+    if (value is! List || value.length != 2) return;
+    final first = value[0];
+    final second = value[1];
+    if (first is! num ||
+        second is! num ||
+        !first.isFinite ||
+        !second.isFinite) {
+      return;
+    }
+    final a = first.toDouble().clamp(0.12, 0.76);
+    final b = second.toDouble().clamp(a + 0.12, 0.88);
+    target[id] = [a, b];
   }
 
   void chooseWaveform(int index) {

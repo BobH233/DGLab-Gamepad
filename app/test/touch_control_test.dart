@@ -23,6 +23,28 @@ void main() {
       mapTouchPoint(x: 0.5, y: 1 / 3, intensityCeiling: 120).frequencyMs,
       closeTo(10, 0.0001),
     );
+    expect(
+      mapTouchPoint(
+        x: 0.15,
+        y: 0.1,
+        intensityCeiling: 100,
+        horizontalSplitA: 0.3,
+        horizontalSplitB: 0.7,
+        verticalSplitA: 0.2,
+        verticalSplitB: 0.8,
+      ).intensity,
+      closeTo(50, 0.0001),
+    );
+    expect(
+      mapTouchPoint(
+        x: 0.5,
+        y: 0.1,
+        intensityCeiling: 100,
+        verticalSplitA: 0.2,
+        verticalSplitB: 0.8,
+      ).frequencyMs,
+      closeTo(55, 0.0001),
+    );
   });
 
   test(

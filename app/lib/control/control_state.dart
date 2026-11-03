@@ -13,6 +13,14 @@ class ControlState {
   TouchPoint? touchPoint;
   bool touchGrid = true;
   Map<String, double> touchBalance = {'A': 0.5, 'B': 0.5};
+  Map<String, List<double>> touchHorizontalSplits = {
+    'A': [1 / 3, 2 / 3],
+    'B': [1 / 3, 2 / 3],
+  };
+  Map<String, List<double>> touchVerticalSplits = {
+    'A': [1 / 3, 2 / 3],
+    'B': [1 / 3, 2 / 3],
+  };
 
   double offset(String channel) {
     double sum = 0;
@@ -47,10 +55,16 @@ class ControlState {
         !point.active) {
       return null;
     }
+    final horizontal = touchHorizontalSplits[channel] ?? const [1 / 3, 2 / 3];
+    final vertical = touchVerticalSplits[channel] ?? const [1 / 3, 2 / 3];
     return mapTouchPoint(
       x: point.x,
       y: point.y,
       intensityCeiling: channels[channel]!.base,
+      horizontalSplitA: horizontal[0],
+      horizontalSplitB: horizontal[1],
+      verticalSplitA: vertical[0],
+      verticalSplitB: vertical[1],
     );
   }
 
@@ -113,7 +127,15 @@ class ControlState {
       ..touchChannel = touchChannel
       ..touchPoint = touchPoint
       ..touchGrid = touchGrid
-      ..touchBalance = Map.from(touchBalance);
+      ..touchBalance = Map.from(touchBalance)
+      ..touchHorizontalSplits = {
+        for (final entry in touchHorizontalSplits.entries)
+          entry.key: List.from(entry.value),
+      }
+      ..touchVerticalSplits = {
+        for (final entry in touchVerticalSplits.entries)
+          entry.key: List.from(entry.value),
+      };
     for (final command in commands) {
       if (command is! Map) throw const FormatException('指令必须是对象');
       draft._apply(bindingId, Map<String, dynamic>.from(command));

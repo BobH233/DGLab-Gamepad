@@ -61,79 +61,75 @@ class _TouchPanelState extends State<TouchPanel> {
   ControlDesk get desk => widget.desk;
 
   @override
-  Widget build(BuildContext context) {
-    final channel = desk.touchChannel;
-    return Container(
-      decoration: BoxDecoration(
-        color: Palette.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      foregroundDecoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Palette.yellow),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-            child: Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    '$channel 通道',
-                    style: const TextStyle(
-                      color: Palette.yellow,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: desk,
+    builder: (context, _) {
+      final channel = desk.touchChannel;
+      return Container(
+        decoration: BoxDecoration(
+          color: Palette.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Palette.yellow),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      '$channel 通道',
+                      style: const TextStyle(
+                        color: Palette.yellow,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                const Spacer(),
-                IconButton(
-                  tooltip: settings ? '返回触控区域' : '触控设置',
-                  onPressed: () => setState(() => settings = !settings),
-                  icon: Icon(
-                    settings ? Icons.close_rounded : Icons.settings_outlined,
-                    size: 20,
+                  const Spacer(),
+                  IconButton(
+                    tooltip: settings ? '返回触控区域' : '触控设置',
+                    onPressed: () => setState(() => settings = !settings),
+                    icon: const Icon(Icons.settings_outlined, size: 20),
+                    color: Palette.yellow,
                   ),
-                  color: Palette.yellow,
-                ),
-                IconButton(
-                  tooltip: '退出触控面板',
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close_rounded, size: 20),
-                  color: Palette.yellow,
-                ),
-              ],
+                  IconButton(
+                    tooltip: '退出触控面板',
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                    color: Palette.yellow,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1, color: Palette.line),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: settings
-                  ? SingleChildScrollView(
-                      key: const ValueKey('touch-settings'),
-                      child: _TouchSettings(
+            const Divider(height: 1, color: Palette.line),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: settings
+                    ? SingleChildScrollView(
+                        key: const ValueKey('touch-settings'),
+                        child: _TouchSettings(desk: desk, channel: channel),
+                      )
+                    : _TouchSurface(
+                        key: ValueKey('touch-surface-$channel'),
                         desk: desk,
                         channel: channel,
-                        onClose: () => setState(() => settings = false),
+                        showGrid: desk.engine.state.touchGrid,
                       ),
-                    )
-                  : _TouchSurface(
-                      key: ValueKey('touch-surface-$channel'),
-                      desk: desk,
-                      channel: channel,
-                      showGrid: desk.engine.state.touchGrid,
-                    ),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class _TouchSurface extends StatefulWidget {
@@ -261,6 +257,10 @@ class _TouchSurfaceState extends State<_TouchSurface>
   Widget build(BuildContext context) {
     final state = widget.desk.engine.state;
     final readout = state.touchReadout(widget.channel);
+    final horizontal =
+        state.touchHorizontalSplits[widget.channel] ?? const [1 / 3, 2 / 3];
+    final vertical =
+        state.touchVerticalSplits[widget.channel] ?? const [1 / 3, 2 / 3];
     return SizedBox.expand(
       key: const ValueKey('touch-surface'),
       child: LayoutBuilder(
@@ -290,6 +290,8 @@ class _TouchSurfaceState extends State<_TouchSurface>
                         particles: particles,
                         now: _clockMs,
                         showGrid: widget.showGrid,
+                        horizontalSplits: horizontal,
+                        verticalSplits: vertical,
                       ),
                     ),
                   ),
@@ -319,40 +321,28 @@ class _TouchSurfaceState extends State<_TouchSurface>
 class _TouchSettings extends StatelessWidget {
   final ControlDesk desk;
   final String channel;
-  final VoidCallback onClose;
 
-  const _TouchSettings({
-    required this.desk,
-    required this.channel,
-    required this.onClose,
-  });
+  const _TouchSettings({required this.desk, required this.channel});
 
   @override
   Widget build(BuildContext context) {
     final state = desk.engine.state;
     final balance = state.touchBalance[channel] ?? 0.5;
+    final balanceLevel = 1 + (balance * 14).round();
+    final frequencySplits =
+        state.touchVerticalSplits[channel] ?? const [1 / 3, 2 / 3];
+    final intensitySplits =
+        state.touchHorizontalSplits[channel] ?? const [1 / 3, 2 / 3];
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                tooltip: '关闭触控设置',
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded, size: 20),
-                color: Palette.yellow,
-              ),
-              const Expanded(
-                child: Text(
-                  '触控功能设置',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(width: 48),
-            ],
+          const Center(
+            child: Text(
+              '触控功能设置',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
           ),
           const Divider(height: 22, color: Palette.line),
           Row(
@@ -376,7 +366,18 @@ class _TouchSettings extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _FrequencyMapping(),
+          _MappingRangeSlider(
+            splits: frequencySplits,
+            onChanged: (value) => desk.setTouchVerticalSplits(
+              channel,
+              value[0],
+              value[1],
+              persist: false,
+            ),
+            onEnd: desk.save,
+            sliderKey: const ValueKey('frequency-mapping-range'),
+            showFrequencyLabels: true,
+          ),
           const SizedBox(height: 20),
           const Row(
             children: [
@@ -385,13 +386,23 @@ class _TouchSettings extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          const _IntensityMapping(),
+          _MappingRangeSlider(
+            splits: intensitySplits,
+            onChanged: (value) => desk.setTouchHorizontalSplits(
+              channel,
+              value[0],
+              value[1],
+              persist: false,
+            ),
+            onEnd: desk.save,
+            sliderKey: const ValueKey('intensity-mapping-range'),
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
               const Expanded(child: Text('高低频平衡')),
               Text(
-                '${(balance * 30).round()}',
+                '$balanceLevel',
                 style: _mono.copyWith(color: Palette.yellow, fontSize: 13),
               ),
             ],
@@ -403,14 +414,20 @@ class _TouchSettings extends StatelessWidget {
               thumbColor: Palette.yellow,
             ),
             child: Slider(
-              value: balance * 30,
-              min: 0,
-              max: 30,
-              divisions: 30,
-              onChanged: (value) =>
-                  desk.setTouchBalance(channel, value / 30, persist: false),
-              onChangeEnd: (value) =>
-                  desk.setTouchBalance(channel, value / 30, persist: true),
+              value: balanceLevel.toDouble(),
+              min: 1,
+              max: 15,
+              divisions: 14,
+              onChanged: (value) => desk.setTouchBalance(
+                channel,
+                (value - 1) / 14,
+                persist: false,
+              ),
+              onChangeEnd: (value) => desk.setTouchBalance(
+                channel,
+                (value - 1) / 14,
+                persist: true,
+              ),
             ),
           ),
         ],
@@ -438,29 +455,76 @@ class _Pill extends StatelessWidget {
   );
 }
 
-class _FrequencyMapping extends StatelessWidget {
+class _MappingRangeSlider extends StatelessWidget {
+  final List<double> splits;
+  final ValueChanged<List<double>> onChanged;
+  final VoidCallback onEnd;
+  final Key sliderKey;
+  final bool showFrequencyLabels;
+
+  const _MappingRangeSlider({
+    required this.splits,
+    required this.onChanged,
+    required this.onEnd,
+    required this.sliderKey,
+    this.showFrequencyLabels = false,
+  });
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 42,
-    child: Stack(
-      alignment: Alignment.center,
-      children: [
-        Positioned(
-          left: 24,
-          right: 24,
-          child: Container(height: 1, color: Palette.line),
+  Widget build(BuildContext context) => Column(
+    children: [
+      if (showFrequencyLabels)
+        SizedBox(
+          height: 28,
+          child: LayoutBuilder(
+            builder: (context, constraints) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Positioned(left: 0, child: _ValueBox('100')),
+                Positioned(
+                  left: (splits[0] * (constraints.maxWidth - 38)).clamp(
+                    38.0,
+                    constraints.maxWidth - 76,
+                  ),
+                  child: const _ValueBox('10'),
+                ),
+                Positioned(
+                  left: (splits[1] * (constraints.maxWidth - 38)).clamp(
+                    38.0,
+                    constraints.maxWidth - 76,
+                  ),
+                  child: const _ValueBox('10'),
+                ),
+                const Positioned(right: 0, child: _ValueBox('100')),
+              ],
+            ),
+          ),
         ),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            _ValueBox('100'),
-            _ValueBox('10'),
-            _ValueBox('10'),
-            _ValueBox('100'),
-          ],
+      SizedBox(
+        height: 48,
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 2,
+            activeTrackColor: Palette.yellow,
+            inactiveTrackColor: Palette.line,
+            disabledActiveTrackColor: Palette.line,
+            disabledInactiveTrackColor: Palette.line,
+            thumbColor: Palette.yellow,
+            overlayColor: Palette.yellow.withValues(alpha: 0.12),
+            rangeTrackShape: const RectangularRangeSliderTrackShape(),
+            rangeThumbShape: const _MappingRangeThumbShape(),
+          ),
+          child: RangeSlider(
+            key: sliderKey,
+            values: RangeValues(splits[0], splits[1]),
+            min: 0,
+            max: 1,
+            onChanged: (values) => onChanged([values.start, values.end]),
+            onChangeEnd: (_) => onEnd(),
+          ),
         ),
-      ],
-    ),
+      ),
+    ],
   );
 }
 
@@ -481,35 +545,53 @@ class _ValueBox extends StatelessWidget {
   );
 }
 
-class _IntensityMapping extends StatelessWidget {
-  const _IntensityMapping();
+class _MappingRangeThumbShape extends RangeSliderThumbShape {
+  const _MappingRangeThumbShape();
+
+  static const _size = Size(30, 28);
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 32,
-    decoration: BoxDecoration(
-      border: Border.all(color: Palette.line),
-      borderRadius: BorderRadius.circular(5),
-    ),
-    child: Row(
-      children: [
-        for (final weight in [1, 2, 4, 2, 1])
-          Expanded(
-            flex: weight,
-            child: Container(
-              margin: const EdgeInsets.all(1),
-              color: Palette.yellow.withValues(
-                alpha: weight == 4
-                    ? 0.9
-                    : weight == 2
-                    ? 0.42
-                    : 0.12,
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) => _size;
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    bool? isOnTop,
+    required SliderThemeData sliderTheme,
+    TextDirection? textDirection,
+    Thumb? thumb,
+    bool? isPressed,
+  }) {
+    final rect = Rect.fromCenter(
+      center: center,
+      width: _size.width,
+      height: _size.height,
+    );
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(4));
+    final canvas = context.canvas;
+    canvas.drawRRect(rrect, Paint()..color = Palette.background);
+    canvas.drawRRect(
+      rrect,
+      Paint()
+        ..color = Palette.yellow
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+    if (isPressed ?? false) {
+      canvas.drawRRect(
+        rrect.inflate(3),
+        Paint()
+          ..color = Palette.yellow.withValues(alpha: 0.16)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
+  }
 }
 
 class _Particle {
@@ -523,11 +605,15 @@ class _TouchPainter extends CustomPainter {
   final List<_Particle> particles;
   final int now;
   final bool showGrid;
+  final List<double> horizontalSplits;
+  final List<double> verticalSplits;
 
   _TouchPainter({
     required this.particles,
     required this.now,
     required this.showGrid,
+    required this.horizontalSplits,
+    required this.verticalSplits,
   });
 
   @override
@@ -538,10 +624,12 @@ class _TouchPainter extends CustomPainter {
       final grid = Paint()
         ..color = Palette.line.withValues(alpha: 0.8)
         ..strokeWidth = 1;
-      for (var i = 1; i < 3; i++) {
-        final x = size.width * i / 3;
-        final y = size.height * i / 3;
+      for (final split in horizontalSplits) {
+        final x = size.width * split;
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+      }
+      for (final split in verticalSplits) {
+        final y = size.height * split;
         canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
       }
     }

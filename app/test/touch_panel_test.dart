@@ -70,10 +70,63 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('频率映射（纵向）'), findsOneWidget);
       expect(find.text('强度映射（横向）'), findsOneWidget);
+      final balance = tester.widget<Slider>(
+        find.descendant(of: find.byType(Dialog), matching: find.byType(Slider)),
+      );
+      expect(balance.min, 1);
+      expect(balance.max, 15);
+      final horizontal = desk.engine.state.touchHorizontalSplits['A']!;
+      final horizontalBefore = horizontal[0];
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('intensity-mapping-range')),
+      );
+      await tester.pumpAndSettle();
+      final intensityRange = find.byKey(
+        const ValueKey('intensity-mapping-range'),
+      );
+      final intensityRect = tester.getRect(intensityRange);
+      await tester.dragFrom(
+        Offset(
+          intensityRect.left + intensityRect.width * horizontalBefore,
+          intensityRect.center.dy,
+        ),
+        const Offset(36, 0),
+      );
+      await tester.pump();
+      expect(
+        desk.engine.state.touchHorizontalSplits['A']![0],
+        greaterThan(horizontalBefore),
+      );
+      final vertical = desk.engine.state.touchVerticalSplits['A']!;
+      final verticalBefore = vertical[0];
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('frequency-mapping-range')),
+      );
+      await tester.pumpAndSettle();
+      final frequencyRange = find.byKey(
+        const ValueKey('frequency-mapping-range'),
+      );
+      final frequencyRect = tester.getRect(frequencyRange);
+      await tester.dragFrom(
+        Offset(
+          frequencyRect.left + frequencyRect.width * verticalBefore,
+          frequencyRect.center.dy,
+        ),
+        const Offset(36, 0),
+      );
+      await tester.pump();
+      expect(
+        desk.engine.state.touchVerticalSplits['A']![0],
+        greaterThan(verticalBefore),
+      );
+      await tester.ensureVisible(find.byType(Switch));
+      await tester.pumpAndSettle();
       await tester.tap(find.byType(Switch));
       await tester.pump();
       expect(desk.engine.state.touchGrid, isFalse);
-      await tester.tap(find.byTooltip('关闭触控设置'));
+      await tester.ensureVisible(find.byTooltip('返回触控区域'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('返回触控区域'));
       await tester.pumpAndSettle();
 
       final surface = find.byKey(const ValueKey('touch-surface'));
@@ -84,8 +137,9 @@ void main() {
       expect(desk.output.latest?.channels['A']!['enabled'], true);
       expect(desk.output.latest?.channels['B']!['intensity'], 44);
 
+      final leftSplit = desk.engine.state.touchHorizontalSplits['A']![0];
       await gesture.moveTo(
-        Offset(rect.left + rect.width * 0.25, rect.center.dy),
+        Offset(rect.left + rect.width * leftSplit / 2, rect.center.dy),
       );
       await tester.pump();
       expect(desk.engine.state.touchReadout('A')!.intensity, closeTo(60, 1));

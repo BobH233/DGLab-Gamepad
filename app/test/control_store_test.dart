@@ -51,6 +51,8 @@ void main() {
         desk.toggle('A');
         desk.setTouchGrid(false);
         desk.setTouchBalance('A', 0.8);
+        desk.setTouchHorizontalSplits('A', 0.25, 0.7);
+        desk.setTouchVerticalSplits('A', 0.3, 0.75);
         monitor.didChangeAppLifecycleState(AppLifecycleState.inactive);
         expect(desk.engine.state.enabled('A'), isFalse);
         await Future<void>.delayed(const Duration(milliseconds: 750));
@@ -65,6 +67,8 @@ void main() {
         expect(restored.engine.state.enabled('A'), isFalse);
         expect(restored.engine.state.touchGrid, isFalse);
         expect(restored.engine.state.touchBalance['A'], 0.8);
+        expect(restored.engine.state.touchHorizontalSplits['A'], [0.25, 0.7]);
+        expect(restored.engine.state.touchVerticalSplits['A'], [0.3, 0.75]);
       } finally {
         desk.dispose();
         restored.dispose();
