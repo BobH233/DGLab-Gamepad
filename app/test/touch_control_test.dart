@@ -52,6 +52,7 @@ void main() {
     () {
       final state = ControlState()
         ..touchMode = true
+        ..touchSurfaceVisible = true
         ..touchChannel = 'A';
       state.channels['A']!.base = 120;
       state.channels['B']!
@@ -89,5 +90,37 @@ void main() {
     expect(encodeBalance(0), 0);
     expect(encodeBalance(0.5), 128);
     expect(encodeBalance(1), 255);
+  });
+
+  test('screen input keeps ownership until the finger lifts', () {
+    final state = ControlState()
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+    state.beginScreenTouch(0.2, 0.3);
+    state.apply('rightStick', [
+      {'type': 'touchPoint', 'x': 0.8, 'y': 0.7, 'active': true},
+    ]);
+    expect(state.touchPoint!.x, 0.2);
+    expect(state.touchPoint!.y, 0.3);
+
+    state.endScreenTouch();
+    state.apply('rightStick', [
+      {'type': 'touchPoint', 'x': 0.8, 'y': 0.7, 'active': true},
+    ]);
+    expect(state.touchPoint!.x, 0.8);
+    expect(state.touchPoint!.y, 0.7);
+    expect(state.touchPoint!.active, isTrue);
+  });
+
+  test('hidden touch settings reject script touch commands', () {
+    final state = ControlState()
+      ..touchMode = true
+      ..touchChannel = 'A';
+    state.apply('rightStick', [
+      {'type': 'touchPoint', 'x': 0.8, 'y': 0.7, 'active': true},
+    ]);
+    expect(state.touchPoint, isNull);
+    expect(state.touchReadout('A'), isNull);
   });
 }

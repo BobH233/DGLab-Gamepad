@@ -68,6 +68,7 @@ void main() {
 
       await tester.tap(find.byTooltip('触控设置'));
       await tester.pumpAndSettle();
+      expect(desk.engine.state.touchSurfaceVisible, isFalse);
       expect(find.text('频率映射（纵向）'), findsOneWidget);
       expect(find.text('强度映射（横向）'), findsOneWidget);
       final balance = tester.widget<Slider>(
@@ -128,11 +129,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('返回触控区域'));
       await tester.pumpAndSettle();
+      expect(desk.engine.state.touchSurfaceVisible, isTrue);
 
       final surface = find.byKey(const ValueKey('touch-surface'));
       final rect = tester.getRect(surface);
       final gesture = await tester.startGesture(rect.center);
       await tester.pump();
+      expect(find.byKey(const ValueKey('touch-cursor')), findsOneWidget);
       expect(desk.engine.state.touchReadout('A')!.intensity, closeTo(120, 1));
       expect(desk.output.latest?.channels['A']!['enabled'], true);
       expect(desk.output.latest?.channels['B']!['intensity'], 44);

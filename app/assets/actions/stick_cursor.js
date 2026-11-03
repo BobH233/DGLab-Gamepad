@@ -1,7 +1,21 @@
 registerAction({
-  apiVersion:1,id:'builtin.stickCursor',name:'摇杆移动波形光标',inputs:['stick'],
-  fields:[{key:'target',label:'目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]}],
+  apiVersion:1,id:'builtin.stickCursor',name:'摇杆移动光标',inputs:['stick'],
+  fields:[{key:'target',label:'波形目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]}],
   onEvent(ctx,state) {
+    if(ctx.touch.open) {
+      if(!ctx.touch.surface || ctx.event.type!=='tick') return [];
+      const x=ctx.input.x,y=ctx.input.y,radius=Math.hypot(x,y);
+      if(radius<0.02) {
+        if(!state.active) return [];
+        state.active=false;
+        return [{type:'touchPoint',x:state.x,y:state.y,active:false}];
+      }
+      const scale=radius/Math.max(Math.abs(x),Math.abs(y));
+      state.x=Math.min(1,Math.max(0,0.5+0.5*x*scale));
+      state.y=Math.min(1,Math.max(0,0.5+0.5*y*scale));
+      state.active=true;
+      return [{type:'touchPoint',x:state.x,y:state.y,active:true}];
+    }
     if(ctx.event.type!=='tick') return [];
     const x=ctx.input.x,y=ctx.input.y, magnitude=Math.max(Math.abs(x),Math.abs(y));
     if(magnitude<0.35) { state.direction=null; state.target=null; state.wait=0; return []; }

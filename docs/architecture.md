@@ -89,7 +89,7 @@ M1/M2 在某些模式由固件映射到普通按键，此时只能收到映射�
 
 ```mermaid
 flowchart LR
-  Input[InputMonitor 同步 frames] --> Engine[ControlEngine 边沿 / 阈值 / 20Hz tick]
+  Input[InputMonitor 同步 frames] --> Engine[ControlEngine 边沿 / 阈值 / 20Hz 摇杆 tick]
   Engine --> JS[每个绑定独立 QuickJS]
   JS --> Commands[经过校验的语义命令]
   Commands --> State[ControlState 基础值 / 临时效果 / 限幅]
@@ -106,7 +106,7 @@ flowchart LR
 
 - `app/lib/control/models.dart`：双通道模型、波形元数据、绑定/脚本声明、输出接口。
 - `control_state.dart`：基础强度与临时效果分层；命令批次原子提交；输出限制到 0–200。
-- `control_engine.dart`：同步处理每次输入；按钮边沿、扳机阈值、摇杆 tick、错误隔离与复位。
+- `control_engine.dart`：同步处理每次输入；按钮边沿、扳机阈值、摇杆 tick、触点输入仲裁、错误隔离与复位。
 - `app/lib/scripting/action_runtime.dart`：脚本注册、配置 schema、只读上下文、受限 JS 执行。
 - `app/assets/actions`：9 个内置操作的真实 JS 源码；用户脚本沿用相同执行链。
 - `control_desk.dart`：连接 UI、会话、引擎与存储；不包含设备协议。
@@ -115,7 +115,7 @@ flowchart LR
 - `app/lib/control/touch_control.dart`：二维触控映射、波形频率压缩与平衡参数转换，不依赖 Flutter。
 - `app/lib/ui/control/touch_panel.dart`：单通道触控弹窗、设置、调试读数与粒子轨迹；只把归一化触点交给 `ControlDesk`。
 
-按钮和触发器在同步 frames 流中处理，避免漏掉同一帧内的按下/松开。摇杆使用 20Hz 的有界 dt，不把后台积累时间当作大幅增量。UI 读取同一 ControlState，显示基础强度、临时加成、最终强度、启停、选中通道与波形光标。IMU 不参与业务控制。
+按钮和触发器在同步 frames 流中处理，避免漏掉同一帧内的按下/松开。摇杆使用 20Hz 的有界 dt，不把后台积累时间当作大幅增量；触控面板打开时，同一个摇杆脚本把向量映射成经过校验的 `touchPoint` 命令。屏幕手指拥有触点优先权，设置页隐藏触控区域时禁止重新激活。UI 读取同一 ControlState，显示基础强度、临时加成、最终强度、启停、选中通道、波形光标与触控落点。IMU 不参与业务控制。
 
 停用通道只把输出归零，基础强度保留。全部停止、进入编辑、输入失联、后台和脚本故障停止两路并清除临时效果。恢复不会自动启用通道。按住型动作锁定激活时通道；所有百分比增减基于基础值计算。
 

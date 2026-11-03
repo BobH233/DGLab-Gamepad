@@ -228,6 +228,36 @@ void main() {
     unawaited(stream.close());
     await tester.pump();
   });
+
+  testWidgets('Hiding touch settings clears and flushes the output', (
+    tester,
+  ) async {
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final coyote = _FakeCoyote();
+    final desk = ControlDesk(monitor, coyote: coyote);
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    desk.engine.state.channels['A']!.base = 120;
+    desk.openTouchChannel('A');
+    desk.updateTouchPoint(0.5, 0.5, notify: true);
+    expect(desk.engine.state.touchReadout('A'), isNotNull);
+    final flushes = coyote.flushes;
+
+    desk.setTouchSurfaceVisible(false);
+    expect(desk.engine.state.touchReadout('A'), isNull);
+    expect(desk.engine.state.touchPoint, isNull);
+    expect(coyote.flushes, flushes + 1);
+    desk.updateTouchPoint(0.7, 0.7);
+    expect(desk.engine.state.touchPoint, isNull);
+
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
 }
 
 class _LocalAssets extends CachingAssetBundle {
@@ -249,11 +279,17 @@ class _MemoryStore extends ControlStore {
 
 class _FakeCoyote extends CoyoteController {
   int scanCount = 0;
+  int flushes = 0;
 
   @override
   Future<void> scan() async {
     scanCount++;
     status = CoyoteStatus.scanning;
     notifyListeners();
+  }
+
+  @override
+  void flushLatest() {
+    flushes++;
   }
 }

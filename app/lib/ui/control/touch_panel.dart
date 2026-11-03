@@ -95,7 +95,10 @@ class _TouchPanelState extends State<TouchPanel> {
                   const Spacer(),
                   IconButton(
                     tooltip: settings ? '返回触控区域' : '触控设置',
-                    onPressed: () => setState(() => settings = !settings),
+                    onPressed: () {
+                      desk.setTouchSurfaceVisible(settings);
+                      setState(() => settings = !settings);
+                    },
                     icon: const Icon(Icons.settings_outlined, size: 20),
                     color: Palette.yellow,
                   ),
@@ -257,6 +260,7 @@ class _TouchSurfaceState extends State<_TouchSurface>
   Widget build(BuildContext context) {
     final state = widget.desk.engine.state;
     final readout = state.touchReadout(widget.channel);
+    final point = state.touchPoint;
     final horizontal =
         state.touchHorizontalSplits[widget.channel] ?? const [1 / 3, 2 / 3];
     final vertical =
@@ -295,6 +299,50 @@ class _TouchSurfaceState extends State<_TouchSurface>
                       ),
                     ),
                   ),
+                  if (point != null)
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 50),
+                      curve: Curves.linear,
+                      left: (point.x * size.width - 8).clamp(
+                        0,
+                        math.max(0, size.width - 16),
+                      ),
+                      top: (point.y * size.height - 8).clamp(
+                        0,
+                        math.max(0, size.height - 16),
+                      ),
+                      child: IgnorePointer(
+                        child: AnimatedContainer(
+                          key: const ValueKey('touch-cursor'),
+                          duration: const Duration(milliseconds: 80),
+                          width: 16,
+                          height: 16,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: point.active
+                                ? Palette.yellow
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: Palette.yellow.withValues(
+                                alpha: point.active ? 1 : 0.45,
+                              ),
+                              width: 1.5,
+                            ),
+                            boxShadow: point.active
+                                ? [
+                                    BoxShadow(
+                                      color: Palette.yellow.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                      blurRadius: 12,
+                                      spreadRadius: 2,
+                                    ),
+                                  ]
+                                : null,
+                          ),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     left: 18,
                     bottom: 14,

@@ -1,6 +1,7 @@
 import 'models.dart';
 
 class ControlState {
+  static final _screenTouchOwner = Object();
   Map<String, ChannelState> channels = {
     for (final id in channelIds) id: ChannelState(),
   };
@@ -9,8 +10,10 @@ class ControlState {
   int columns = 3;
   int sequence = 0;
   bool touchMode = false;
+  bool touchSurfaceVisible = false;
   String touchChannel = 'A';
   TouchPoint? touchPoint;
+  Object? _touchOwner;
   bool touchGrid = true;
   Map<String, double> touchBalance = {'A': 0.5, 'B': 0.5};
   Map<String, List<double>> touchHorizontalSplits = {
@@ -50,6 +53,7 @@ class ControlState {
   TouchReadout? touchReadout(String channel) {
     final point = touchPoint;
     if (!touchMode ||
+        !touchSurfaceVisible ||
         channel != touchChannel ||
         point == null ||
         !point.active) {
@@ -106,9 +110,42 @@ class ControlState {
             : effective(id),
       },
   };
+
+  Map<String, dynamic> touchContext() => {
+    'open': touchMode,
+    'surface': touchSurfaceVisible,
+    'channel': touchChannel,
+    'point': touchPoint == null
+        ? null
+        : {
+            'x': touchPoint!.x,
+            'y': touchPoint!.y,
+            'active': touchPoint!.active,
+          },
+  };
+
+  void beginScreenTouch(double x, double y) {
+    touchPoint = TouchPoint(x.clamp(0, 1), y.clamp(0, 1));
+    _touchOwner = _screenTouchOwner;
+  }
+
+  void endScreenTouch() {
+    if (!identical(_touchOwner, _screenTouchOwner)) return;
+    final point = touchPoint;
+    if (point != null) {
+      touchPoint = TouchPoint(point.x, point.y, active: false);
+    }
+    _touchOwner = null;
+  }
+
+  void clearTouchPoint() {
+    touchPoint = null;
+    _touchOwner = null;
+  }
+
   void stop() {
     overlays.clear();
-    touchPoint = null;
+    clearTouchPoint();
     for (final channel in channels.values) {
       channel.enabled = false;
     }
@@ -124,8 +161,10 @@ class ControlState {
       ..selected = selected
       ..columns = columns
       ..touchMode = touchMode
+      ..touchSurfaceVisible = touchSurfaceVisible
       ..touchChannel = touchChannel
       ..touchPoint = touchPoint
+      .._touchOwner = _touchOwner
       ..touchGrid = touchGrid
       ..touchBalance = Map.from(touchBalance)
       ..touchHorizontalSplits = {
@@ -144,12 +183,33 @@ class ControlState {
     overlays = draft.overlays;
     selected = draft.selected;
     touchPoint = draft.touchPoint;
+    _touchOwner = draft._touchOwner;
   }
 
   void _apply(String bindingId, Map<String, dynamic> command) {
     final type = command['type'];
     if (type == 'clearOverlay') {
       overlays.remove(bindingId);
+      return;
+    }
+    if (type == 'touchPoint') {
+      if (!touchMode ||
+          !touchSurfaceVisible ||
+          (_touchOwner != null && _touchOwner != bindingId)) {
+        return;
+      }
+      final active = command['active'];
+      if (active is! bool) throw const FormatException('触控状态必须是布尔值');
+      double value(String key) {
+        final number = command[key];
+        if (number is! num || !number.isFinite || number < 0 || number > 1) {
+          throw FormatException('指令参数 $key 无效');
+        }
+        return number.toDouble();
+      }
+
+      touchPoint = TouchPoint(value('x'), value('y'), active: active);
+      _touchOwner = active ? bindingId : null;
       return;
     }
     final id = command['channel'];

@@ -222,6 +222,34 @@ void main() {
     engine.tick(const Duration(seconds: 2));
     expect(engine.state.channels['A']!.base, resting);
   });
+  test('stick maps to the open touch surface and releases at center', () {
+    configure([
+      binding('rightStickVector', 'stickCursor', {'target': 'A'}),
+    ]);
+    engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+
+    engine.tick(Duration.zero);
+    input({Control.rightX: 0.5});
+    engine.tick(const Duration(milliseconds: 50));
+    expect(engine.state.touchPoint!.x, closeTo(0.75, 0.0001));
+    expect(engine.state.touchPoint!.y, closeTo(0.5, 0.0001));
+    expect(engine.state.touchPoint!.active, isTrue);
+
+    const diagonal = 0.7071067811865476;
+    input({Control.rightX: diagonal, Control.rightY: -diagonal});
+    engine.tick(const Duration(milliseconds: 100));
+    expect(engine.state.touchPoint!.x, closeTo(1, 0.0001));
+    expect(engine.state.touchPoint!.y, closeTo(0, 0.0001));
+    expect(engine.state.touchReadout('A'), isNotNull);
+
+    input({});
+    engine.tick(const Duration(milliseconds: 150));
+    expect(engine.state.touchPoint!.active, isFalse);
+    expect(engine.state.touchReadout('A'), isNull);
+  });
   test(
     'disconnect clears temporary output and stops channels but retains base',
     () {
@@ -259,6 +287,33 @@ void main() {
       ]),
       throwsFormatException,
     );
+    final touchState = ControlState()
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+    expect(
+      () => touchState.apply('rightStick', [
+        {'type': 'touchPoint', 'x': 1.2, 'y': 0.5, 'active': true},
+      ]),
+      throwsFormatException,
+    );
+    expect(touchState.touchPoint, isNull);
+  });
+  test('rebinding releases a script-held touch point', () {
+    configure([
+      binding('rightStickVector', 'stickCursor', {'target': 'A'}),
+    ]);
+    engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+    engine.tick(Duration.zero);
+    input({Control.rightX: 1});
+    engine.tick(const Duration(milliseconds: 50));
+    expect(engine.state.touchPoint!.active, isTrue);
+
+    engine.configure([], definitions);
+    expect(engine.state.touchPoint, isNull);
   });
   test('user script registers metadata and runs through same host', () {
     final runtime = ActionRuntime(
@@ -277,6 +332,31 @@ void main() {
     ]);
     input({Control.south: 1});
     expect(engine.state.channels['A']!.base, 5);
+  });
+  test('user stick script can drive the same touch command', () {
+    final runtime = ActionRuntime(
+      "registerAction({apiVersion:1,id:'user.touch',name:'Touch',inputs:['stick'],fields:[],onEvent(ctx){return ctx.touch.open&&ctx.touch.surface&&ctx.event.type==='tick'?[{type:'touchPoint',x:0.25,y:0.75,active:true}]:[];}});",
+    );
+    final def = runtime.definition;
+    runtime.dispose();
+    definitions[def.id] = def;
+    configure([
+      Binding(
+        id: 'touch',
+        input: 'leftStickVector',
+        action: def.id,
+        config: def.defaults,
+      ),
+    ]);
+    engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+    engine.tick(Duration.zero);
+    engine.tick(const Duration(milliseconds: 50));
+    expect(engine.state.touchPoint!.x, 0.25);
+    expect(engine.state.touchPoint!.y, 0.75);
+    expect(engine.state.touchPoint!.active, isTrue);
   });
   test(
     'infinite loop is interrupted by native engine and binding is disabled',

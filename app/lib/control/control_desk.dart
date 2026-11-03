@@ -322,7 +322,7 @@ class ControlDesk extends ChangeNotifier {
     if (engine.state.touchMode) {
       engine.state
         ..touchChannel = id
-        ..touchPoint = null;
+        ..clearTouchPoint();
     }
     engine.publish();
     _notify();
@@ -349,9 +349,10 @@ class ControlDesk extends ChangeNotifier {
     if (!channelIds.contains(id)) return;
     engine.state
       ..touchMode = true
+      ..touchSurfaceVisible = true
       ..touchChannel = id
       ..selected = id
-      ..touchPoint = null;
+      ..clearTouchPoint();
     engine.publish();
     coyote.flushLatest();
     _notify();
@@ -362,15 +363,33 @@ class ControlDesk extends ChangeNotifier {
     _touchNotifyTimer = null;
     engine.state
       ..touchMode = false
-      ..touchPoint = null;
+      ..touchSurfaceVisible = false
+      ..clearTouchPoint();
     engine.publish();
     coyote.flushLatest();
     _notify();
   }
 
+  void setTouchSurfaceVisible(bool visible) {
+    if (!engine.state.touchMode ||
+        engine.state.touchSurfaceVisible == visible) {
+      return;
+    }
+    engine.state.touchSurfaceVisible = visible;
+    if (!visible) {
+      engine.state.clearTouchPoint();
+      engine.publish();
+      coyote.flushLatest();
+      _notify();
+      return;
+    }
+    engine.publish();
+    _notify();
+  }
+
   void updateTouchPoint(double x, double y, {bool notify = false}) {
-    if (!engine.state.touchMode) return;
-    engine.state.touchPoint = TouchPoint(x, y);
+    if (!engine.state.touchMode || !engine.state.touchSurfaceVisible) return;
+    engine.state.beginScreenTouch(x, y);
     engine.publish();
     if (notify) {
       _notify();
@@ -387,7 +406,7 @@ class ControlDesk extends ChangeNotifier {
     _touchNotifyTimer = null;
     final point = engine.state.touchPoint;
     if (point == null || !point.active) return;
-    engine.state.touchPoint = TouchPoint(point.x, point.y, active: false);
+    engine.state.endScreenTouch();
     engine.publish();
     coyote.flushLatest();
     _notify();

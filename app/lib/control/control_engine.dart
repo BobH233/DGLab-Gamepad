@@ -160,6 +160,7 @@ class ControlEngine {
         'target': target,
         'selected': state.selected,
         'channels': state.context(),
+        'touch': state.touchContext(),
         'input': inputKind(binding.input) == 'stick'
             ? {
                 'x': _input[isLeft ? Control.leftX : Control.rightX],
@@ -190,6 +191,7 @@ class ControlEngine {
 
   void cancel() {
     state.overlays.clear();
+    state.clearTouchPoint();
     for (final slot in _slots.values) {
       slot.pressed = false;
       slot.previousValue = 0;
