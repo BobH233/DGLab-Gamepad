@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import '../../control/control_desk.dart';
@@ -469,10 +471,15 @@ class _ControlHomeState extends State<ControlHome> {
               ),
               Row(
                 children: [
-                  IconButton(
-                    tooltip: '$id 强度减一',
-                    onPressed: () => desk.setBase(id, channel.base - 1),
-                    icon: const Icon(Icons.remove_rounded, size: 20),
+                  _RepeatButton(
+                    tooltip: '减少 $id 通道强度',
+                    icon: Icons.remove_rounded,
+                    onStep: () => desk.setBase(
+                      id,
+                      desk.engine.state.channels[id]!.base - 1,
+                      persist: false,
+                    ),
+                    onEnd: () => unawaited(desk.save()),
                   ),
                   Expanded(
                     child: Slider(
@@ -485,10 +492,15 @@ class _ControlHomeState extends State<ControlHome> {
                       onChangeEnd: (_) => desk.save(),
                     ),
                   ),
-                  IconButton(
-                    tooltip: '$id 强度加一',
-                    onPressed: () => desk.setBase(id, channel.base + 1),
-                    icon: const Icon(Icons.add_rounded, size: 20),
+                  _RepeatButton(
+                    tooltip: '增加 $id 通道强度',
+                    icon: Icons.add_rounded,
+                    onStep: () => desk.setBase(
+                      id,
+                      desk.engine.state.channels[id]!.base + 1,
+                      persist: false,
+                    ),
+                    onEnd: () => unawaited(desk.save()),
                   ),
                 ],
               ),
@@ -604,4 +616,78 @@ class _ControlHomeState extends State<ControlHome> {
       ),
     );
   }
+}
+
+class _RepeatButton extends StatefulWidget {
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onStep;
+  final VoidCallback onEnd;
+
+  const _RepeatButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onStep,
+    required this.onEnd,
+  });
+
+  @override
+  State<_RepeatButton> createState() => _RepeatButtonState();
+}
+
+class _RepeatButtonState extends State<_RepeatButton> {
+  Timer? _timer;
+
+  void _tap() {
+    widget.onStep();
+    widget.onEnd();
+  }
+
+  void _startRepeat(LongPressStartDetails _) {
+    _timer?.cancel();
+    widget.onStep();
+    _timer = Timer.periodic(
+      const Duration(milliseconds: 80),
+      (_) => widget.onStep(),
+    );
+  }
+
+  void _stopRepeat() {
+    if (_timer == null) return;
+    _timer!.cancel();
+    _timer = null;
+    widget.onEnd();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: widget.tooltip,
+    excludeFromSemantics: true,
+    child: Semantics(
+      button: true,
+      label: widget.tooltip,
+      onTap: _tap,
+      child: GestureDetector(
+        excludeFromSemantics: true,
+        onTap: _tap,
+        onLongPressStart: _startRepeat,
+        onLongPressCancel: _stopRepeat,
+        onLongPressEnd: (_) => _stopRepeat(),
+        child: Material(
+          color: Palette.yellow,
+          shape: const CircleBorder(),
+          child: SizedBox.square(
+            dimension: 38,
+            child: Icon(widget.icon, size: 20, color: Palette.background),
+          ),
+        ),
+      ),
+    ),
+  );
 }
