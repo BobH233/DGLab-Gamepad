@@ -133,6 +133,8 @@ void main() {
       await tester.tap(find.byTooltip('启动 A 通道'));
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isTrue);
+      expect(coyote.connected, isFalse);
+      expect(desk.waveformTrace.samplesFor('A'), isNotEmpty);
       await tester.tap(
         find.text('全部停止').evaluate().isEmpty
             ? find.byTooltip('全部停止')

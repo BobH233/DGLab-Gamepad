@@ -19,13 +19,14 @@ The adapter sends one 20-byte packet every 100ms:
 B0  sequence/flags  strengthA  strengthB  pulseA[8]  pulseB[8]
 ```
 
-- The first nibble is `E` whenever either strength changed, otherwise `0`.
+- The first nibble cycles through `1..F` only when strength changes; it is `0` otherwise.
 - The second nibble uses `C` for A strength, `3` for B strength, `F` for both, and `0` when unchanged.
 - `strengthA/B` are `0..200`.
 - Each pulse frame is either the selected preset’s next DG-LAB frame or a dynamic frame derived from touch frequency and pulse width.
 - A missing waveform or silence packet uses `0A0A0A0A00000000`.
+- The control engine publishes `OutputFrame` values independently of BLE state. A separate output waveform trace consumes those frames at the protocol's 100ms timing, while the Coyote adapter only stores the latest frame when disconnected. Active channel cards render the trace as a right-to-left scrolling pulse stream without sending Bluetooth data.
 
-The device reports `B1` notifications. Bytes 2 and 3 update the displayed device strength for channels A and B. After a strength-changing B0 packet, the stream waits for the matching sequence or a 700ms timeout before sending another strength change.
+The device reports `B1` notifications. Bytes 2 and 3 update the displayed device strength for channels A and B. After a strength-changing B0 packet, waveform packets continue at 100ms while only further strength changes wait for the matching sequence or a 700ms timeout.
 
 Touch balance uses `BF` packets with soft limits left unchanged (`201, 201`), the frequency balance written for A/B, and both pulse-width balance bytes set to `0`.
 

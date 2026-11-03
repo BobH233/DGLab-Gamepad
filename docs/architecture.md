@@ -107,6 +107,7 @@ flowchart LR
 - `app/lib/control/models.dart`：双通道模型、波形元数据、绑定/脚本声明、输出接口。
 - `control_state.dart`：基础强度、通道控制参数与临时效果分层；命令批次原子提交；输出限制到 0–200。
 - `control_engine.dart`：同步处理每次输入；按钮边沿、扳机阈值、摇杆 tick、触点输入仲裁、错误隔离与复位。
+- `output_waveform_trace.dart`：作为独立 `OutputSink` 把控制层输出帧推进为时间戳脉冲轨迹，不依赖 BLE 连接。
 - `app/lib/scripting/action_runtime.dart`：脚本注册、配置 schema、只读上下文、受限 JS 执行。
 - `app/assets/actions`：10 个内置操作的真实 JS 源码；用户脚本沿用相同执行链。
 - `control_desk.dart`：连接 UI、会话、引擎与存储；不包含设备协议。
@@ -119,7 +120,7 @@ flowchart LR
 
 停用通道只把输出归零，基础强度保留。全部停止、进入编辑、输入失联、后台和脚本故障停止两路并清除临时效果。恢复不会自动启用通道。按住型动作锁定激活时通道；所有百分比增减基于基础值计算。
 
-`OutputSink` 现在分流到本地预览和 `CoyoteController`。Coyote 适配器扫描名称前缀 `47` 的设备，使用 `180C/150A/150B` 服务，把 `OutputFrame` 转换为每 100ms 一包的 A/B 强度与两路原始脉冲帧。Android 连接后请求 64 字节 MTU，满足 Coyote 3 的 20 字节控制包。上游控制数据是期望值；界面单独显示设备通过 `B1` 通知回报的强度。触控模式的二维映射与安全归零由 `ControlState` 负责，界面不直接写蓝牙。停用通道、全部停止、输入失联、后台、编辑和设备断开都会停止本地下发循环；主动停止或断开时写入空白脉冲与零强度，结束触控时只归零被接管的通道。
+`OutputSink` 分流到本地预览、`OutputWaveformTrace` 和 `CoyoteController`。波形轨迹 sink 即使未连接郊狼也会按 100ms 节奏消费控制层的 `OutputFrame`，因此界面动画不依赖设备状态；Coyote 适配器只在下游独立负责连接和蓝牙发送，未连接时只保存最新帧。连接后，Coyote 适配器扫描名称前缀 `47` 的设备，使用 `180C/150A/150B` 服务，把 `OutputFrame` 转换为每 100ms 一包的 A/B 强度与两路原始脉冲帧。Android 连接后请求 64 字节 MTU，满足 Coyote 3 的 20 字节控制包。上游控制数据是期望值；界面单独显示设备通过 `B1` 通知回报的强度。触控模式的二维映射与安全归零由 `ControlState` 负责，界面不直接写蓝牙。停用通道、全部停止、输入失联、后台、编辑和设备断开都会停止本地下发循环；主动停止或断开时写入空白脉冲与零强度，结束触控时只归零被接管的通道。
 
 详细注册函数、事件、字段、命令、冲突规则、执行上限和示例见 [脚本 API](script-api.md)。
 

@@ -134,7 +134,11 @@ class ControlEngine {
   void tick(Duration now) {
     final previous = _lastTick;
     _lastTick = now;
-    if (!_live || previous == null) return;
+    if (previous == null) return;
+    if (!_live) {
+      publish();
+      return;
+    }
     final dt = ((now - previous).inMicroseconds / 1000000).clamp(0.0, 0.1);
     for (final slot in _slots.values.toList()) {
       if (!_live) break;

@@ -25,14 +25,22 @@ List<PulseSample> _decode(List<String> frames) {
       for (var i = 0; i < 8; i++)
         int.parse(frame.substring(i * 2, i * 2 + 2), radix: 16),
     ];
-    for (var i = 0; i < 4; i++) {
-      result.add(PulseSample(_frequency(bytes[i]), bytes[i + 4]));
-    }
+    result.addAll(decodePulseBytes(bytes));
   }
   return result;
 }
 
-int _frequency(int value) {
+List<PulseSample> decodePulseBytes(List<int> bytes) {
+  if (bytes.length != 8) {
+    throw const FormatException('Invalid DG-LAB pulse frame');
+  }
+  return [
+    for (var i = 0; i < 4; i++)
+      PulseSample(decodeWaveformFrequency(bytes[i]), bytes[i + 4]),
+  ];
+}
+
+int decodeWaveformFrequency(int value) {
   if (value == 0) return 0;
   if (value < 10) return 10;
   if (value <= 100) return value;

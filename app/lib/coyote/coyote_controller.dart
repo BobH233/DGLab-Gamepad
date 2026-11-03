@@ -246,10 +246,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   Future<void> _sendNext() async {
     final characteristic = _writeCharacteristic;
-    if (_writing ||
-        characteristic == null ||
-        !connected ||
-        _awaitingSequence != null) {
+    if (_writing || characteristic == null || !connected) {
       return;
     }
     _writing = true;
@@ -275,10 +272,12 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         _sentBalanceA = balanceA;
         _sentBalanceB = balanceB;
       }
+      final frame = stop ? null : _latestFrame;
       final packet = _encoder.encode(
-        stop ? null : _latestFrame,
+        frame,
         forceStrength: force,
         silence: stop,
+        allowStrengthChange: stop || _awaitingSequence == null,
       );
       final sequence = packet[1] >> 4;
       if (sequence != 0) {
@@ -304,10 +303,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _forceStrength = true;
     _stopPending = true;
     _awaitingSequence = null;
-    _stopPending = false;
     _ackTimer?.cancel();
     _ackTimer = null;
-    await _sendNext();
+    if (!_writing) await _sendNext();
   }
 
   void flushLatest() {
@@ -326,7 +324,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         _awaitingSequence = null;
         _ackTimer?.cancel();
         _ackTimer = null;
-        unawaited(_sendNext());
       }
       _notify();
     }

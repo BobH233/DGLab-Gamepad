@@ -8,13 +8,15 @@ import '../scripting/action_runtime.dart';
 import 'control_engine.dart';
 import 'control_store.dart';
 import 'models.dart';
+import 'output_waveform_trace.dart';
 
 class ControlDesk extends ChangeNotifier {
   final InputMonitor monitor;
   final CoyoteController coyote;
+  final OutputWaveformTrace waveformTrace;
   final PreviewOutputSink output = PreviewOutputSink();
   late final ControlEngine engine = ControlEngine(
-    output: _ControlOutput(output, coyote),
+    output: _ControlOutput(output, waveformTrace, coyote),
   );
   final Map<String, ActionDefinition> actions = {};
   List<Binding> bindings = [];
@@ -77,8 +79,12 @@ class ControlDesk extends ChangeNotifier {
   String? error;
   String? persistenceError;
   final List<String> loadWarnings = [];
-  ControlDesk(this.monitor, {CoyoteController? coyote})
-    : coyote = coyote ?? CoyoteController() {
+  ControlDesk(
+    this.monitor, {
+    CoyoteController? coyote,
+    OutputWaveformTrace? waveformTrace,
+  }) : coyote = coyote ?? CoyoteController(),
+       waveformTrace = waveformTrace ?? OutputWaveformTrace() {
     this.coyote.addListener(_notify);
   }
   void _notify() {
@@ -760,6 +766,7 @@ class ControlDesk extends ChangeNotifier {
     _subscription?.cancel();
     coyote.removeListener(_notify);
     coyote.dispose();
+    waveformTrace.dispose();
     engine.dispose();
     super.dispose();
   }
@@ -767,11 +774,13 @@ class ControlDesk extends ChangeNotifier {
 
 class _ControlOutput implements OutputSink {
   final PreviewOutputSink preview;
+  final OutputWaveformTrace waveformTrace;
   final CoyoteController coyote;
-  _ControlOutput(this.preview, this.coyote);
+  _ControlOutput(this.preview, this.waveformTrace, this.coyote);
 
   @override
   void accept(OutputFrame frame) {
+    waveformTrace.accept(frame);
     preview.accept(frame);
     coyote.accept(frame);
   }

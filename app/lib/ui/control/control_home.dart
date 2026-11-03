@@ -621,7 +621,12 @@ class _ControlHomeState extends State<ControlHome> {
               SizedBox(
                 height: 54,
                 width: double.infinity,
-                child: WaveformView(waveform: wave, active: live),
+                child: LiveWaveformView(
+                  waveform: wave,
+                  channel: id,
+                  trace: desk.waveformTrace,
+                  active: live,
+                ),
               ),
               const SizedBox(height: 16),
               Row(
