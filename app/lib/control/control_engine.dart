@@ -20,6 +20,7 @@ class ControlEngine {
   final Map<String, String> errors = {};
   final List<String> eventLog = [];
   GamepadState _input = GamepadState.neutral;
+  GamepadState _rawInput = GamepadState.neutral;
   bool _live = false;
   String? _deviceId;
   Duration? _lastTick;
@@ -82,6 +83,7 @@ class ControlEngine {
     GamepadState value, {
     required bool live,
     required String? deviceId,
+    GamepadState? raw,
   }) {
     if (!live || (_deviceId != null && deviceId != _deviceId)) {
       if (_live || state.overlays.isNotEmpty) stopAll();
@@ -90,6 +92,7 @@ class ControlEngine {
     _deviceId = deviceId;
     if (!live) {
       _input = GamepadState.neutral;
+      _rawInput = GamepadState.neutral;
       publish();
       return;
     }
@@ -101,6 +104,7 @@ class ControlEngine {
       _live = true;
     }
     _input = value;
+    _rawInput = raw ?? value;
     for (final slot in _slots.values.toList()) {
       if (!_live) break;
       if (errors.containsKey(slot.binding.id)) continue;
@@ -169,8 +173,14 @@ class ControlEngine {
             ? {
                 'x': _input[isLeft ? Control.leftX : Control.rightX],
                 'y': _input[isLeft ? Control.leftY : Control.rightY],
+                'rawX': _rawInput[isLeft ? Control.leftX : Control.rightX],
+                'rawY': _rawInput[isLeft ? Control.leftY : Control.rightY],
               }
             : {'value': _input[Control.values.byName(binding.input)]},
+        'rawInput': {
+          for (final control in Control.values)
+            control.name: _rawInput[control],
+        },
         'waveforms': waveforms
             .map((w) => {'id': w.id, 'name': w.name})
             .toList(),
@@ -206,6 +216,7 @@ class ControlEngine {
       }
     }
     _input = GamepadState.neutral;
+    _rawInput = GamepadState.neutral;
     _live = false;
     _lastTick = null;
     publish();

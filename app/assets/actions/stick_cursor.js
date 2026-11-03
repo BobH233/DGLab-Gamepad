@@ -1,11 +1,20 @@
 registerAction({
   apiVersion:1,id:'builtin.stickCursor',name:'摇杆移动光标',inputs:['stick'],
-  fields:[{key:'target',label:'波形目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]}],
+  fields:[
+    {key:'target',label:'波形目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]},
+    {key:'modifier',label:'触控死区旁路键',type:'select',default:'rightStick',options:[{value:'none',label:'不启用'},{value:'leftStick',label:'L3'},{value:'rightStick',label:'R3'}]}
+  ],
   onEvent(ctx,state) {
     if(ctx.touch.open) {
       if(!ctx.touch.surface || ctx.event.type!=='tick') return [];
-      const x=ctx.input.x,y=ctx.input.y,radius=Math.hypot(x,y);
-      if(radius<0.02) {
+      const bypass=ctx.config.modifier!=='none'&&ctx.rawInput[ctx.config.modifier]>0.5;
+      const x=bypass?ctx.input.rawX:ctx.input.x,y=bypass?ctx.input.rawY:ctx.input.y,radius=Math.hypot(x,y);
+      if(bypass&&radius===0) {
+        if(state.active&&state.x===0.5&&state.y===0.5) return [];
+        state.x=0.5;state.y=0.5;state.active=true;
+        return [{type:'touchPoint',x:0.5,y:0.5,active:true}];
+      }
+      if(!bypass&&radius<0.02) {
         if(!state.active) return [];
         state.active=false;
         return [{type:'touchPoint',x:state.x,y:state.y,active:false}];

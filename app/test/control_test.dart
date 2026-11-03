@@ -39,8 +39,13 @@ void main() {
     engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
   }
 
-  void input(Map<Control, double> values) =>
-      engine.input(GamepadState(values), live: true, deviceId: 'pad');
+  void input(Map<Control, double> values, {Map<Control, double>? raw}) =>
+      engine.input(
+        GamepadState(values),
+        live: true,
+        deviceId: 'pad',
+        raw: raw == null ? null : GamepadState(raw),
+      );
   Binding binding(String input, String action, Map<String, dynamic> config) =>
       Binding(
         id: input,
@@ -297,6 +302,34 @@ void main() {
     engine.tick(const Duration(milliseconds: 150));
     expect(engine.state.touchPoint!.active, isFalse);
     expect(engine.state.touchReadout('A'), isNull);
+  });
+  test('R3 bypasses the touch stick dead zone while held', () {
+    configure([
+      binding('rightStickVector', 'stickCursor', {'target': 'A'}),
+    ]);
+    engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A';
+
+    engine.tick(Duration.zero);
+    input({Control.rightStick: 1}, raw: {Control.rightStick: 1});
+    engine.tick(const Duration(milliseconds: 50));
+    expect(engine.state.touchPoint!.x, closeTo(0.5, 0.0001));
+    expect(engine.state.touchPoint!.y, closeTo(0.5, 0.0001));
+    expect(engine.state.touchPoint!.active, isTrue);
+
+    input(
+      {Control.rightStick: 1},
+      raw: {Control.rightStick: 1, Control.rightX: 0.01},
+    );
+    engine.tick(const Duration(milliseconds: 100));
+    expect(engine.state.touchPoint!.x, closeTo(0.505, 0.0001));
+    expect(engine.state.touchPoint!.active, isTrue);
+
+    input({}, raw: {Control.rightX: 0.05});
+    engine.tick(const Duration(milliseconds: 150));
+    expect(engine.state.touchPoint!.active, isFalse);
   });
   test(
     'disconnect clears temporary output and stops channels but retains base',

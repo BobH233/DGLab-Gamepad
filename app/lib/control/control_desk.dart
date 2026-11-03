@@ -264,6 +264,7 @@ class ControlDesk extends ChangeNotifier {
           frame.state,
           live: !editing && frame.status == InputStatus.live,
           deviceId: frame.deviceId,
+          raw: monitor.session.raw,
         );
         _persistChanges();
         _notify();
@@ -272,6 +273,7 @@ class ControlDesk extends ChangeNotifier {
         monitor.session.state,
         live: monitor.session.status == InputStatus.live,
         deviceId: monitor.session.selectedId,
+        raw: monitor.session.raw,
       );
       _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
         if (!editing) {
@@ -683,6 +685,7 @@ class ControlDesk extends ChangeNotifier {
       monitor.session.state,
       live: monitor.session.status == InputStatus.live,
       deviceId: monitor.session.selectedId,
+      raw: monitor.session.raw,
     );
   }
 
