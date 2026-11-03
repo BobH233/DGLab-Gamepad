@@ -238,10 +238,6 @@ void _drawPulseSample(
   if (sample.strength <= 0 || sample.frequency <= 0) return;
   final pulseHeight = height * sample.strength / 100;
   final y = height - pulseHeight;
-  if (sample.frequency == 10) {
-    canvas.drawRect(Rect.fromLTWH(x, y, segmentWidth + 0.5, pulseHeight), ink);
-    return;
-  }
   final count = (200 / sample.frequency).ceil().clamp(1, 10);
   if (count <= 0) return;
   final step = segmentWidth / count;
