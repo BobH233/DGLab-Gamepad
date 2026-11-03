@@ -63,6 +63,14 @@ void main() {
       expect(find.text('快捷操作'), findsNothing);
       expect(find.byType(GridView), findsNothing);
       expect(find.byType(Scrollable), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is SliderTheme &&
+              widget.data.inactiveTrackColor == Palette.line,
+        ),
+        findsNWidgets(2),
+      );
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('连接郊狼').first);
       await tester.pump();
@@ -77,6 +85,10 @@ void main() {
       await tester.pump();
       expect(desk.engine.state.channels['A']!.base, 1);
       final plus = find.byTooltip('增加 A 通道强度');
+      final cardInk = tester.widget<InkWell>(
+        find.ancestor(of: plus, matching: find.byType(InkWell)).first,
+      );
+      expect(cardInk.overlayColor?.resolve({}), Colors.transparent);
       final hold = await tester.startGesture(tester.getCenter(plus));
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pump(const Duration(milliseconds: 240));
@@ -86,6 +98,14 @@ void main() {
       final heldValue = desk.engine.state.channels['A']!.base;
       await tester.pump(const Duration(milliseconds: 240));
       expect(desk.engine.state.channels['A']!.base, heldValue);
+      final bPlus = find.byTooltip('增加 B 通道强度');
+      await tester.ensureVisible(bPlus);
+      await tester.pumpAndSettle();
+      await tester.tap(bPlus);
+      await tester.pump();
+      expect(desk.engine.state.selected, 'A');
+      await tester.ensureVisible(find.byTooltip('启动 A 通道'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('启动 A 通道'));
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isTrue);

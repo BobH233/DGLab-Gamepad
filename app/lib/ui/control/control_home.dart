@@ -344,6 +344,7 @@ class _ControlHomeState extends State<ControlHome> {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => desk.selectChannel(id),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -469,6 +470,7 @@ class _ControlHomeState extends State<ControlHome> {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   _RepeatButton(
@@ -482,14 +484,19 @@ class _ControlHomeState extends State<ControlHome> {
                     onEnd: () => unawaited(desk.save()),
                   ),
                   Expanded(
-                    child: Slider(
-                      value: channel.base,
-                      min: 0,
-                      max: 200,
-                      label: '${channel.base.round()}',
-                      onChanged: (v) =>
-                          desk.setBase(id, v.roundToDouble(), persist: false),
-                      onChangeEnd: (_) => desk.save(),
+                    child: SliderTheme(
+                      data: SliderTheme.of(
+                        context,
+                      ).copyWith(inactiveTrackColor: Palette.line),
+                      child: Slider(
+                        value: channel.base,
+                        min: 0,
+                        max: 200,
+                        label: '${channel.base.round()}',
+                        onChanged: (v) =>
+                            desk.setBase(id, v.roundToDouble(), persist: false),
+                        onChangeEnd: (_) => desk.save(),
+                      ),
                     ),
                   ),
                   _RepeatButton(
