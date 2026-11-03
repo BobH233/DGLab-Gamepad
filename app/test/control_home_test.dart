@@ -6,7 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:dglab_gamepad/coyote/coyote_controller.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
 import 'package:dglab_gamepad/control/control_desk.dart';
+import 'package:dglab_gamepad/control/control_state.dart';
 import 'package:dglab_gamepad/control/control_store.dart';
+import 'package:dglab_gamepad/control/models.dart';
 import 'package:dglab_gamepad/ui/control/control_home.dart';
 import 'package:dglab_gamepad/ui/palette.dart';
 
@@ -223,6 +225,141 @@ void main() {
     expect(notifications, 2);
 
     desk.removeListener(countNotifications);
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
+
+  testWidgets('gamepad operations reveal offscreen target cards', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 620);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Palette.background,
+          colorScheme: const ColorScheme.dark(
+            primary: Palette.yellow,
+            surface: Palette.surface,
+          ),
+        ),
+        home: ControlHome(desk: desk),
+      ),
+    );
+    Map<String, dynamic> snapshot(Map<String, double> values) => {
+      'version': 1,
+      'type': 'snapshot',
+      'devices': [
+        {
+          'id': 'pad',
+          'name': 'Pad',
+          'family': 'xbox',
+          'transport': 'usb',
+          'capabilities': ['down', 'rightShoulder'],
+          'values': values,
+        },
+      ],
+    };
+
+    final dashboard = find.byType(ListView).first;
+    final scrollable = find.descendant(
+      of: dashboard,
+      matching: find.byType(Scrollable),
+    );
+    final position = tester.state<ScrollableState>(scrollable).position;
+    final viewport = tester.getRect(dashboard);
+    stream.add(snapshot({}));
+    await tester.pump();
+
+    stream.add(snapshot({'down': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(desk.engine.state.focusTarget?.area, ControlFocusArea.waveform);
+    expect(desk.engine.state.focusTarget?.waveformIndex, 2);
+    expect(position.pixels, greaterThan(0));
+    final waveformTitle = find.text(waveforms[2].name).first;
+    expect(
+      tester.getRect(waveformTitle).top,
+      greaterThanOrEqualTo(viewport.top),
+    );
+    expect(
+      tester.getRect(waveformTitle).bottom,
+      lessThanOrEqualTo(viewport.bottom),
+    );
+
+    stream.add(snapshot({}));
+    await tester.pump();
+    stream.add(snapshot({'rightShoulder': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(desk.engine.state.focusTarget?.area, ControlFocusArea.channel);
+    expect(desk.engine.state.focusTarget?.channel, 'B');
+    final channelCard = find
+        .ancestor(of: find.text('B 通道').first, matching: find.byType(Material))
+        .first;
+    final channelRect = tester.getRect(channelCard);
+    expect(channelRect.top, greaterThanOrEqualTo(viewport.top));
+    expect(channelRect.bottom, lessThanOrEqualTo(viewport.bottom));
+
+    await desk.setBinding(
+      Binding(
+        id: 'down',
+        input: 'down',
+        action: 'builtin.waveform',
+        config: {
+          'target': 'B',
+          'mode': 'fixed',
+          'waveform': waveforms[5].id,
+          'list': [waveforms.first.id],
+        },
+      ),
+    );
+    stream.add(snapshot({}));
+    await tester.pump();
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pump();
+    stream.add(snapshot({'down': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(desk.engine.state.focusTarget?.area, ControlFocusArea.waveform);
+    expect(desk.engine.state.focusTarget?.channel, 'B');
+    expect(desk.engine.state.focusTarget?.waveformIndex, 5);
+    final updatedChannelRect = tester.getRect(channelCard);
+    expect(updatedChannelRect.top, greaterThanOrEqualTo(viewport.top));
+    expect(updatedChannelRect.bottom, lessThanOrEqualTo(viewport.bottom));
+
+    final follow = find
+        .ancestor(
+          of: find.byTooltip('操作位置自动滚动'),
+          matching: find.byType(IconButton),
+        )
+        .first;
+    expect(tester.widget<IconButton>(follow).isSelected, isTrue);
+    await tester.tap(follow);
+    await tester.pump();
+    expect(desk.autoScrollToAction, isFalse);
+    stream.add(snapshot({}));
+    await tester.pump();
+    position.jumpTo(position.maxScrollExtent);
+    await tester.pump();
+    final manualOffset = position.pixels;
+    stream.add(snapshot({'down': 1}));
+    await tester.pump();
+    expect(position.pixels, manualOffset);
+
+    await tester.pumpWidget(const SizedBox());
     desk.dispose();
     monitor.dispose();
     unawaited(stream.close());

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import '../../control/control_desk.dart';
+import '../../control/control_state.dart';
 import '../../control/models.dart';
 import '../palette.dart';
 import '../monitor_screen.dart';
@@ -21,34 +22,50 @@ class ControlHome extends StatefulWidget {
 
 class _ControlHomeState extends State<ControlHome> {
   int page = 0;
+  int _lastFocusRequest = 0;
   int _lastTouchPanelRequest = 0;
+  bool _focusScrollScheduled = false;
   bool _openingTouch = false;
+  final Map<String, GlobalKey> _channelKeys = {
+    for (final id in channelIds) id: GlobalKey(),
+  };
+  final List<GlobalKey> _waveformKeys = List.generate(
+    waveforms.length,
+    (_) => GlobalKey(),
+  );
   ControlDesk get desk => widget.desk;
 
   @override
   void initState() {
     super.initState();
+    _lastFocusRequest = desk.engine.state.focusRequest;
     _lastTouchPanelRequest = desk.engine.state.touchPanelRequest;
-    desk.addListener(_handleDeskRequests);
+    desk.addListener(_handleDeskChanges);
   }
 
   @override
   void didUpdateWidget(ControlHome oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.desk != widget.desk) {
-      oldWidget.desk.removeListener(_handleDeskRequests);
-      widget.desk.addListener(_handleDeskRequests);
+      oldWidget.desk.removeListener(_handleDeskChanges);
+      widget.desk.addListener(_handleDeskChanges);
+      _lastFocusRequest = widget.desk.engine.state.focusRequest;
       _lastTouchPanelRequest = widget.desk.engine.state.touchPanelRequest;
     }
   }
 
   @override
   void dispose() {
-    desk.removeListener(_handleDeskRequests);
+    desk.removeListener(_handleDeskChanges);
     super.dispose();
   }
 
-  void _handleDeskRequests() {
+  void _handleDeskChanges() {
+    _handleTouchRequest();
+    _handleFocusRequest();
+  }
+
+  void _handleTouchRequest() {
     final request = desk.engine.state.touchPanelRequest;
     if (request == _lastTouchPanelRequest) return;
     _lastTouchPanelRequest = request;
@@ -78,6 +95,54 @@ class _ControlHomeState extends State<ControlHome> {
         }),
       );
     });
+  }
+
+  void _handleFocusRequest() {
+    final request = desk.engine.state.focusRequest;
+    if (request == _lastFocusRequest) return;
+    _lastFocusRequest = request;
+    if (!desk.autoScrollToAction || page != 0 || _focusScrollScheduled) {
+      return;
+    }
+    _focusScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusScrollScheduled = false;
+      if (!mounted || !desk.autoScrollToAction || page != 0) return;
+      final target = desk.engine.state.focusTarget;
+      if (target != null) unawaited(_revealFocus(target));
+    });
+  }
+
+  Future<void> _revealFocus(ControlFocusTarget target) async {
+    final area =
+        target.area == ControlFocusArea.waveform &&
+            target.channel != desk.engine.state.selected
+        ? ControlFocusArea.channel
+        : target.area;
+    final key = switch (area) {
+      ControlFocusArea.channel => _channelKeys[target.channel],
+      ControlFocusArea.waveform => _waveformKeys[target.waveformIndex],
+    };
+    final targetContext = key?.currentContext;
+    if (targetContext == null) return;
+    final targetBox = targetContext.findRenderObject();
+    final scrollable = Scrollable.of(targetContext);
+    final viewportBox = scrollable.context.findRenderObject();
+    if (targetBox is! RenderBox || viewportBox is! RenderBox) return;
+    final top = targetBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
+    final bottom = targetBox
+        .localToGlobal(
+          Offset(targetBox.size.width, targetBox.size.height),
+          ancestor: viewportBox,
+        )
+        .dy;
+    if (top >= 0 && bottom <= viewportBox.size.height) return;
+    await Scrollable.ensureVisible(
+      targetContext,
+      alignment: top < 0 ? 0.04 : 0.96,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void navigate(int value) {
@@ -147,6 +212,20 @@ class _ControlHomeState extends State<ControlHome> {
                       );
                       if (page == 0) desk.endEdit();
                     },
+                  ),
+                  IconButton(
+                    tooltip: '操作位置自动滚动',
+                    isSelected: desk.autoScrollToAction,
+                    icon: const Icon(
+                      Icons.center_focus_weak,
+                      color: Palette.muted,
+                    ),
+                    selectedIcon: const Icon(
+                      Icons.center_focus_strong,
+                      color: Palette.yellow,
+                    ),
+                    onPressed: () =>
+                        desk.setAutoScrollToAction(!desk.autoScrollToAction),
                   ),
                   const SizedBox(width: 4),
                   OutlinedButton.icon(
@@ -406,6 +485,7 @@ class _ControlHomeState extends State<ControlHome> {
         : '已停止';
     final wave = waveforms.firstWhere((w) => w.id == channel.waveform);
     return Material(
+      key: _channelKeys[id],
       color: Palette.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -653,6 +733,7 @@ class _ControlHomeState extends State<ControlHome> {
         current = w.id == channel.waveform,
         focused = i == channel.cursor;
     return InkWell(
+      key: _waveformKeys[i],
       onTap: () => desk.chooseWaveform(i),
       onFocusChange: (focus) {
         if (focus) desk.focusWaveform(i);

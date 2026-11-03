@@ -42,6 +42,7 @@ void main() {
             config: action.defaults,
           ),
         );
+        desk.setAutoScrollToAction(false);
         desk.engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
         desk.engine.input(
           GamepadState({Control.south: 1}),
@@ -57,7 +58,9 @@ void main() {
         expect(desk.engine.state.enabled('A'), isFalse);
         await Future<void>.delayed(const Duration(milliseconds: 750));
         final saved = await store.read();
-        expect(saved!['channels']['A']['base'], 5);
+        expect(saved!['version'], 3);
+        expect(saved['autoScrollToAction'], isFalse);
+        expect(saved['channels']['A']['base'], 5);
         expect(saved['channels']['A'].containsKey('enabled'), isFalse);
         await restored.initialize(storage: store, assets: _Assets());
         expect(restored.ready, isTrue, reason: restored.error);
@@ -69,6 +72,7 @@ void main() {
         expect(restored.engine.state.touchBalance['A'], 0.8);
         expect(restored.engine.state.touchHorizontalSplits['A'], [0.25, 0.7]);
         expect(restored.engine.state.touchVerticalSplits['A'], [0.3, 0.75]);
+        expect(restored.autoScrollToAction, isFalse);
       } finally {
         desk.dispose();
         restored.dispose();
@@ -122,7 +126,7 @@ void main() {
       expect(desk.ready, isTrue, reason: desk.error);
       final touch = desk.bindings.singleWhere((b) => b.input == 'north');
       expect(touch.action, 'builtin.toggleTouch');
-      expect((await store.read())!['version'], 2);
+      expect((await store.read())!['version'], 3);
     } finally {
       desk.dispose();
       monitor.dispose();

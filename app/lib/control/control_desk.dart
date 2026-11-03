@@ -66,6 +66,7 @@ class ControlDesk extends ChangeNotifier {
 
   ControlStore? store;
   bool ready = false;
+  bool autoScrollToAction = true;
   bool _disposed = false;
   String? error;
   String? persistenceError;
@@ -153,6 +154,9 @@ class ControlDesk extends ChangeNotifier {
             final num value => value.toInt(),
             _ => 1,
           };
+          if (saved['autoScrollToAction'] case final bool value) {
+            autoScrollToAction = value;
+          }
           if (savedVersion < 2 &&
               !restored.any((binding) => binding.input == 'north') &&
               actions.containsKey('builtin.toggleTouch')) {
@@ -319,7 +323,8 @@ class ControlDesk extends ChangeNotifier {
     final channelKey = _channelKey;
     try {
       await store?.save({
-        'version': 2,
+        'version': 3,
+        'autoScrollToAction': autoScrollToAction,
         'bindings': bindings.map((b) => b.toJson()).toList(),
         'scripts': actions.values
             .where((a) => !a.builtin)
@@ -352,6 +357,13 @@ class ControlDesk extends ChangeNotifier {
     }
     engine.publish();
     _notify();
+  }
+
+  void setAutoScrollToAction(bool value) {
+    if (autoScrollToAction == value) return;
+    autoScrollToAction = value;
+    _notify();
+    unawaited(save());
   }
 
   void setBase(String id, double value, {bool persist = true}) {

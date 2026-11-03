@@ -1,5 +1,13 @@
 import 'models.dart';
 
+enum ControlFocusArea { channel, waveform }
+
+typedef ControlFocusTarget = ({
+  ControlFocusArea area,
+  String channel,
+  int waveformIndex,
+});
+
 class ControlState {
   static final _screenTouchOwner = Object();
   Map<String, ChannelState> channels = {
@@ -9,6 +17,8 @@ class ControlState {
   Map<String, Map<String, dynamic>> overlays = {};
   int columns = 3;
   int sequence = 0;
+  ControlFocusTarget? focusTarget;
+  int focusRequest = 0;
   int touchPanelRequest = 0;
   String? touchPanelRequestChannel;
   bool touchMode = false;
@@ -162,6 +172,8 @@ class ControlState {
       ..overlays = Map.from(overlays)
       ..selected = selected
       ..columns = columns
+      ..focusTarget = focusTarget
+      ..focusRequest = focusRequest
       ..touchPanelRequest = touchPanelRequest
       ..touchPanelRequestChannel = touchPanelRequestChannel
       ..touchMode = touchMode
@@ -186,6 +198,8 @@ class ControlState {
     channels = draft.channels;
     overlays = draft.overlays;
     selected = draft.selected;
+    focusTarget = draft.focusTarget;
+    focusRequest = draft.focusRequest;
     touchPanelRequest = draft.touchPanelRequest;
     touchPanelRequestChannel = draft.touchPanelRequestChannel;
     touchPoint = draft.touchPoint;
@@ -204,7 +218,8 @@ class ControlState {
         throw const FormatException('通道必须是 A 或 B');
       }
       touchPanelRequest++;
-      touchPanelRequestChannel = id as String;
+      touchPanelRequestChannel = id;
+      _focus(id);
       return;
     }
     if (type == 'touchPoint') {
@@ -245,30 +260,38 @@ class ControlState {
           throw const FormatException('未知增减单位');
         }
         overlays[bindingId] = Map.unmodifiable(command);
+        _focus(id);
       case 'enableOverlay':
         if (command['value'] is! bool) throw const FormatException('启停必须是布尔值');
         overlays.remove(bindingId);
         overlays[bindingId] = Map.unmodifiable(command);
+        _focus(id);
       case 'toggleEnabled':
         channel.enabled = !channel.enabled;
+        _focus(id);
       case 'adjustBase':
         channel.base = (channel.base + number('value', -200, 200)).clamp(
           0,
           200,
         );
+        _focus(id);
       case 'setBase':
         channel.base = number('value', 0, 200);
+        _focus(id);
       case 'selectChannel':
-        selected = id as String;
+        selected = id;
+        _focus(id);
       case 'waveform':
-        final id = canonicalWaveformId(command['id']);
-        if (!waveforms.any((w) => w.id == id)) {
+        final waveformId = canonicalWaveformId(command['id']);
+        if (!waveforms.any((w) => w.id == waveformId)) {
           throw const FormatException('波形不存在');
         }
-        channel.waveform = id;
+        channel.waveform = waveformId;
         channel.cursor = waveforms.indexWhere((w) => w.id == channel.waveform);
+        _focus(id, waveformIndex: channel.cursor);
       case 'applyCursor':
         channel.waveform = waveforms[channel.cursor].id;
+        _focus(id, waveformIndex: channel.cursor);
       case 'moveCursor':
         final i = channel.cursor;
         switch (command['direction']) {
@@ -285,8 +308,20 @@ class ControlState {
           default:
             throw const FormatException('未知方向');
         }
+        _focus(id, waveformIndex: channel.cursor);
       default:
         throw FormatException('未知指令 $type');
     }
+  }
+
+  void _focus(String channel, {int? waveformIndex}) {
+    focusTarget = (
+      area: waveformIndex == null
+          ? ControlFocusArea.channel
+          : ControlFocusArea.waveform,
+      channel: channel,
+      waveformIndex: waveformIndex ?? 0,
+    );
+    focusRequest++;
   }
 }

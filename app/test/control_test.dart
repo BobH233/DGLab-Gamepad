@@ -188,6 +188,28 @@ void main() {
       expect(engine.state.channels['A']!.waveform, 'eea0e4ce');
     },
   );
+  test('script commands expose their on-screen focus target', () {
+    final state = ControlState()
+      ..columns = 2
+      ..apply('binding', [
+        {'type': 'setBase', 'channel': 'B', 'value': 80},
+      ]);
+    expect(state.focusTarget?.area, ControlFocusArea.channel);
+    expect(state.focusTarget?.channel, 'B');
+
+    state.apply('binding', [
+      {'type': 'moveCursor', 'channel': 'B', 'direction': 'down'},
+    ]);
+    expect(state.focusTarget?.area, ControlFocusArea.waveform);
+    expect(state.focusTarget?.channel, 'B');
+    expect(state.focusTarget?.waveformIndex, 2);
+
+    state.apply('binding', [
+      {'type': 'selectChannel', 'channel': 'A'},
+    ]);
+    expect(state.focusTarget?.area, ControlFocusArea.channel);
+    expect(state.focusTarget?.channel, 'A');
+  });
   test('Y toggles the current touch panel on each press', () {
     configure([binding('north', 'toggleTouch', {})]);
     engine.state.selected = 'B';
