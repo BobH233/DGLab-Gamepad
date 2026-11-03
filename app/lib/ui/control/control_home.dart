@@ -622,7 +622,6 @@ class _ControlHomeState extends State<ControlHome> {
                 height: 54,
                 width: double.infinity,
                 child: LiveWaveformView(
-                  waveform: wave,
                   channel: id,
                   trace: desk.waveformTrace,
                   active: live,

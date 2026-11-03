@@ -46,14 +46,12 @@ class _PulsePainter extends CustomPainter {
 }
 
 class LiveWaveformView extends StatefulWidget {
-  final Waveform waveform;
   final String channel;
   final OutputWaveformTrace trace;
   final bool active;
 
   const LiveWaveformView({
     super.key,
-    required this.waveform,
     required this.channel,
     required this.trace,
     required this.active,
@@ -85,15 +83,10 @@ class _LiveWaveformViewState extends State<LiveWaveformView>
       oldWidget.trace.removeListener(_handleTrace);
       widget.trace.addListener(_handleTrace);
     }
-    if (!widget.active) {
-      _scroll.stop();
-    } else if (!oldWidget.active) {
-      _scroll.value = 1;
-    }
   }
 
   void _handleTrace() {
-    if (!mounted || !widget.active) return;
+    if (!mounted) return;
     _scroll.forward(from: 0);
   }
 
@@ -106,14 +99,11 @@ class _LiveWaveformViewState extends State<LiveWaveformView>
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.active) {
-      return WaveformView(waveform: widget.waveform, active: false);
-    }
     return CustomPaint(
       painter: _LivePulsePainter(
-        waveform: widget.waveform,
         channel: widget.channel,
         trace: widget.trace,
+        active: widget.active,
         scroll: _scroll,
         repaint: Listenable.merge([_scroll, widget.trace]),
       ),
@@ -122,17 +112,17 @@ class _LiveWaveformViewState extends State<LiveWaveformView>
 }
 
 class _LivePulsePainter extends CustomPainter {
-  static const _sampleSpacing = 8.0;
+  static const _sampleSpacing = 12.0;
 
-  final Waveform waveform;
   final String channel;
   final OutputWaveformTrace trace;
+  final bool active;
   final Animation<double> scroll;
 
   _LivePulsePainter({
-    required this.waveform,
     required this.channel,
     required this.trace,
+    required this.active,
     required this.scroll,
     required Listenable repaint,
   }) : super(repaint: repaint);
@@ -141,13 +131,13 @@ class _LivePulsePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     _drawGrid(canvas, size);
     final samples = trace.samplesFor(channel);
-    if (samples.isEmpty) {
-      _drawSamples(canvas, size, waveform.samples, Palette.yellow);
-      return;
-    }
+    if (samples.isEmpty) return;
 
     canvas.save();
     canvas.clipRect(Offset.zero & size);
+    final color = active
+        ? Palette.yellow
+        : Palette.muted.withValues(alpha: 0.8);
     final entering = samples.length > 4
         ? (1 - scroll.value) * 4 * _sampleSpacing
         : 0.0;
@@ -162,7 +152,7 @@ class _LivePulsePainter extends CustomPainter {
         segmentWidth: _sampleSpacing,
         height: size.height,
         ink: Paint()
-          ..color = Palette.yellow.withValues(
+          ..color = color.withValues(
             alpha: (0.28 + 0.72 * i / samples.length).clamp(0.28, 1.0),
           ),
       );
@@ -188,30 +178,9 @@ class _LivePulsePainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _drawSamples(
-    Canvas canvas,
-    Size size,
-    List<PulseSample> samples,
-    Color color,
-  ) {
-    if (samples.isEmpty) return;
-    final segmentWidth = size.width / samples.length;
-    final ink = Paint()..color = color;
-    for (var i = 0; i < samples.length; i++) {
-      _drawPulseSample(
-        canvas,
-        sample: samples[i],
-        x: i * segmentWidth,
-        segmentWidth: segmentWidth,
-        height: size.height,
-        ink: ink,
-      );
-    }
-  }
-
   @override
   bool shouldRepaint(covariant _LivePulsePainter old) =>
-      old.waveform.id != waveform.id || old.channel != channel;
+      old.channel != channel || old.active != active;
 }
 
 void _drawGrid(Canvas canvas, Size size) {
