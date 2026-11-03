@@ -305,6 +305,21 @@ void main() {
     expect(desk.touchChannel, 'B');
     expect(find.byType(Dialog), findsOneWidget);
 
+    final surface = find.byKey(const ValueKey('touch-surface'));
+    final trail = find.descendant(
+      of: surface,
+      matching: find.byType(CustomPaint),
+    );
+    int particleCount() =>
+        (tester.widget<CustomPaint>(trail).painter as dynamic).particleCount
+            as int;
+    expect(particleCount(), 0);
+    stream.add(snapshot({'rightX': 1}));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.pump();
+    expect(particleCount(), greaterThan(0));
+
     stream.add(snapshot({}));
     stream.add(snapshot({'north': 1}));
     await tester.pump();

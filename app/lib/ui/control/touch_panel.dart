@@ -160,6 +160,8 @@ class _TouchSurfaceState extends State<_TouchSurface>
   int _tickerBaseMs = 0;
   int? _pointer;
   Offset? _lastPoint;
+  Offset? _lastGamepadPoint;
+  bool _gamepadTrailScheduled = false;
 
   @override
   void initState() {
@@ -188,6 +190,7 @@ class _TouchSurfaceState extends State<_TouchSurface>
   void _pointerDown(PointerDownEvent event, Size size) {
     if (_pointer != null) return;
     _pointer = event.pointer;
+    _lastGamepadPoint = null;
     final point = _clamp(event.localPosition, size);
     _lastPoint = point;
     particles.clear();
@@ -213,8 +216,54 @@ class _TouchSurfaceState extends State<_TouchSurface>
     if (_pointer != event.pointer) return;
     _pointer = null;
     _lastPoint = null;
+    _lastGamepadPoint = null;
     widget.desk.endTouchPoint();
     _start();
+  }
+
+  @override
+  void didUpdateWidget(_TouchSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleGamepadTrail();
+  }
+
+  void _scheduleGamepadTrail() {
+    if (_pointer != null) {
+      _lastGamepadPoint = null;
+      return;
+    }
+    final point = widget.desk.engine.state.touchPoint;
+    if (point == null || !point.active) {
+      _lastGamepadPoint = null;
+      return;
+    }
+    final current = Offset(point.x, point.y);
+    final previous = _lastGamepadPoint;
+    if (previous != null && (current - previous).distance < 0.001) return;
+    if (_gamepadTrailScheduled) return;
+    _gamepadTrailScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gamepadTrailScheduled = false;
+      if (!mounted || _pointer != null) {
+        _lastGamepadPoint = null;
+        return;
+      }
+      final latest = widget.desk.engine.state.touchPoint;
+      if (latest == null || !latest.active) {
+        _lastGamepadPoint = null;
+        return;
+      }
+      final box = context.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) return;
+      final size = box.size;
+      final to = Offset(latest.x * size.width, latest.y * size.height);
+      final from = previous == null
+          ? to
+          : Offset(previous.dx * size.width, previous.dy * size.height);
+      _spawn(from, to, size);
+      _lastGamepadPoint = Offset(latest.x, latest.y);
+      _start();
+    });
   }
 
   Offset _clamp(Offset value, Size size) =>
@@ -292,6 +341,7 @@ class _TouchSurfaceState extends State<_TouchSurface>
                     child: CustomPaint(
                       painter: _TouchPainter(
                         particles: particles,
+                        particleCount: particles.length,
                         now: _clockMs,
                         showGrid: widget.showGrid,
                         horizontalSplits: horizontal,
@@ -651,6 +701,7 @@ class _Particle {
 
 class _TouchPainter extends CustomPainter {
   final List<_Particle> particles;
+  final int particleCount;
   final int now;
   final bool showGrid;
   final List<double> horizontalSplits;
@@ -658,6 +709,7 @@ class _TouchPainter extends CustomPainter {
 
   _TouchPainter({
     required this.particles,
+    required this.particleCount,
     required this.now,
     required this.showGrid,
     required this.horizontalSplits,
