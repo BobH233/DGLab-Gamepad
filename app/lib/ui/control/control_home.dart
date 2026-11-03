@@ -9,6 +9,7 @@ import '../monitor_screen.dart';
 import 'bindings_page.dart';
 import 'coyote_sheet.dart';
 import 'scripts_page.dart';
+import 'touch_panel.dart';
 import 'waveform_view.dart';
 
 class ControlHome extends StatefulWidget {
@@ -329,8 +330,22 @@ class _ControlHomeState extends State<ControlHome> {
     final state = desk.engine.state;
     final channel = state.channels[id]!;
     final selected = state.selected == id, enabled = state.enabled(id);
+    final touchReadout = state.touchReadout(id);
+    final touchTarget = state.touchMode && state.touchChannel == id;
+    final live = touchTarget ? touchReadout != null : enabled;
     final offset = state.offset(id);
-    final intensity = enabled ? state.effective(id).round() : 0;
+    final intensity = touchTarget
+        ? touchReadout?.intensity.round() ?? 0
+        : enabled
+        ? state.effective(id).round()
+        : 0;
+    final status = touchTarget
+        ? live
+              ? '触控输出'
+              : '等待触摸'
+        : enabled
+        ? '输出中'
+        : '已停止';
     final wave = waveforms.firstWhere((w) => w.id == channel.waveform);
     return Material(
       color: Palette.surface,
@@ -377,6 +392,16 @@ class _ControlHomeState extends State<ControlHome> {
                     ),
                   ),
                   IconButton.filledTonal(
+                    tooltip: '打开 $id 通道触控',
+                    onPressed: () => showTouchPanelDialog(context, desk, id),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Palette.raised,
+                      foregroundColor: Palette.yellow,
+                    ),
+                    icon: const Icon(Icons.fingerprint_rounded, size: 21),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton.filledTonal(
                     tooltip: enabled ? '停止 $id 通道' : '启动 $id 通道',
                     onPressed: () => desk.toggle(id),
                     style: IconButton.styleFrom(
@@ -403,7 +428,7 @@ class _ControlHomeState extends State<ControlHome> {
                       fontSize: 64,
                       height: 1,
                       fontWeight: FontWeight.w300,
-                      color: enabled ? Palette.yellow : Palette.muted,
+                      color: live ? Palette.yellow : Palette.muted,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -419,10 +444,10 @@ class _ControlHomeState extends State<ControlHome> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        enabled ? '输出中' : '已停止',
+                        status,
                         style: TextStyle(
                           fontSize: 12,
-                          color: enabled ? Palette.yellow : Palette.muted,
+                          color: live ? Palette.yellow : Palette.muted,
                         ),
                       ),
                       const SizedBox(height: 7),
@@ -441,7 +466,7 @@ class _ControlHomeState extends State<ControlHome> {
               SizedBox(
                 height: 54,
                 width: double.infinity,
-                child: WaveformView(waveform: wave, active: enabled),
+                child: WaveformView(waveform: wave, active: live),
               ),
               const SizedBox(height: 16),
               Row(

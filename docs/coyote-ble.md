@@ -9,23 +9,25 @@
 - Battery service: `0000180a-0000-1000-8000-00805f9b34fb`.
 - Battery characteristic: `00001500-0000-1000-8000-00805f9b34fb`.
 
-Android requests a 64-byte ATT MTU after connecting because one Coyote 3 control packet is 21 bytes. iOS and macOS use their system MTU.
+Android requests a 64-byte ATT MTU after connecting because one Coyote 3 control packet is 20 bytes. iOS and macOS use their system MTU.
 
 ## Control Packet
 
-The adapter sends one 21-byte packet every 100ms:
+The adapter sends one 20-byte packet every 100ms:
 
 ```text
-B0  sequence  flags  strengthA  strengthB  pulseA[8]  pulseB[8]
+B0  sequence/flags  strengthA  strengthB  pulseA[8]  pulseB[8]
 ```
 
-- `sequence` is `E` whenever either strength changed, otherwise it advances from `0` to `F`.
-- `flags` uses `C` for A, `3` for B, `F` for both, and `0` when unchanged.
+- The first nibble is `E` whenever either strength changed, otherwise `0`.
+- The second nibble uses `C` for A strength, `3` for B strength, `F` for both, and `0` when unchanged.
 - `strengthA/B` are `0..200`.
-- Each pulse frame is the currently selected preset’s next 8-byte DG-LAB frame.
+- Each pulse frame is either the selected preset’s next DG-LAB frame or a dynamic frame derived from touch frequency and pulse width.
 - A missing waveform or silence packet uses `0A0A0A0A00000000`.
 
-The device may report `B1` notifications. Bytes 2 and 3 update the displayed device strength for channels A and B.
+The device reports `B1` notifications. Bytes 2 and 3 update the displayed device strength for channels A and B. After a strength-changing B0 packet, the stream waits for the matching sequence or a 700ms timeout before sending another strength change.
+
+Touch balance uses `BF` packets with soft limits left unchanged (`201, 201`), the frequency balance written for A/B, and both pulse-width balance bytes set to `0`.
 
 ## Safety
 

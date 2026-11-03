@@ -11,7 +11,6 @@ const coyoteDeviceNamePrefix = '47';
 const coyotePulseInterval = Duration(milliseconds: 100);
 
 class CoyotePacketEncoder {
-  int _sequence = 0;
   int _sentStrengthA = 0;
   int _sentStrengthB = 0;
   int _pulseIndexA = 0;
@@ -35,14 +34,13 @@ class CoyotePacketEncoder {
         ? _blankPulse
         : _nextPulse(frame, 'B', () => _pulseIndexB, (v) => _pulseIndexB = v);
 
-    final packet = Uint8List(21);
+    final packet = Uint8List(20);
     packet[0] = 0xB0;
-    packet[1] = changed == 0 ? _sequence++ & 0x0F : 0x0E;
-    packet[2] = changed;
-    packet[3] = strengthA;
-    packet[4] = strengthB;
-    packet.setRange(5, 13, _decodePulse(pulseA));
-    packet.setRange(13, 21, _decodePulse(pulseB));
+    packet[1] = changed == 0 ? 0 : 0xE0 | changed;
+    packet[2] = strengthA;
+    packet[3] = strengthB;
+    packet.setRange(4, 12, _decodePulse(pulseA));
+    packet.setRange(12, 20, _decodePulse(pulseB));
     _sentStrengthA = strengthA;
     _sentStrengthB = strengthB;
     return packet;
@@ -59,7 +57,18 @@ class CoyotePacketEncoder {
     int Function() index,
     void Function(int) updateIndex,
   ) {
-    final waveformId = frame?.channels[channel]?['waveformId'];
+    final values = frame?.channels[channel];
+    final frequencyMs = values?['frequencyMs'];
+    final waveformIntensity = values?['waveformIntensity'];
+    if (frequencyMs is num && waveformIntensity is num) {
+      final frequency = encodeWaveformFrequency(frequencyMs.toDouble());
+      final strength = waveformIntensity.round().clamp(0, 100);
+      return [
+        for (var i = 0; i < 4; i++) frequency.toRadixString(16).padLeft(2, '0'),
+        for (var i = 0; i < 4; i++) strength.toRadixString(16).padLeft(2, '0'),
+      ].join();
+    }
+    final waveformId = values?['waveformId'];
     final waveform = waveforms
         .where((item) => item.id == waveformId)
         .firstOrNull;
@@ -75,4 +84,19 @@ class CoyotePacketEncoder {
   ];
 
   static const _blankPulse = '0A0A0A0A00000000';
+
+  Uint8List encodeBalance({
+    required int frequencyBalanceA,
+    required int frequencyBalanceB,
+    required int pulseBalanceA,
+    required int pulseBalanceB,
+  }) => Uint8List.fromList([
+    0xBF,
+    201,
+    201,
+    frequencyBalanceA.clamp(0, 255),
+    frequencyBalanceB.clamp(0, 255),
+    pulseBalanceA.clamp(0, 255),
+    pulseBalanceB.clamp(0, 255),
+  ]);
 }

@@ -49,6 +49,8 @@ void main() {
           deviceId: 'pad',
         );
         desk.toggle('A');
+        desk.setTouchGrid(false);
+        desk.setTouchBalance('A', 0.8);
         monitor.didChangeAppLifecycleState(AppLifecycleState.inactive);
         expect(desk.engine.state.enabled('A'), isFalse);
         await Future<void>.delayed(const Duration(milliseconds: 750));
@@ -61,6 +63,8 @@ void main() {
         expect(restored.bindings.any((b) => b.action == action.id), isTrue);
         expect(restored.engine.state.channels['A']!.base, 5);
         expect(restored.engine.state.enabled('A'), isFalse);
+        expect(restored.engine.state.touchGrid, isFalse);
+        expect(restored.engine.state.touchBalance['A'], 0.8);
       } finally {
         desk.dispose();
         restored.dispose();

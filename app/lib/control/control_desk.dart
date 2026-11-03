@@ -31,6 +31,13 @@ class ControlDesk extends ChangeNotifier {
     return [
       state.selected,
       state.columns,
+      state.touchMode,
+      state.touchChannel,
+      state.touchPoint?.x,
+      state.touchPoint?.y,
+      state.touchPoint?.active,
+      state.touchGrid,
+      for (final id in channelIds) state.touchBalance[id],
       for (final id in channelIds)
         [
           state.channels[id]!.base,
@@ -148,6 +155,17 @@ class ControlDesk extends ChangeNotifier {
               engine.state.channels[id]!.cursor = waveforms.indexWhere(
                 (w) => w.id == wave,
               );
+            }
+          }
+          final touch = saved['touch'] as Map?;
+          if (touch != null) {
+            engine.state.touchGrid = touch['grid'] as bool? ?? true;
+            final balance = touch['balance'] as Map?;
+            for (final id in channelIds) {
+              final value = balance?[id];
+              if (value is num && value.isFinite) {
+                engine.state.touchBalance[id] = value.toDouble().clamp(0, 1);
+              }
             }
           }
         }
@@ -271,6 +289,10 @@ class ControlDesk extends ChangeNotifier {
         'channels': engine.state.channels.map(
           (k, v) => MapEntry(k, {'base': v.base, 'waveform': v.waveform}),
         ),
+        'touch': {
+          'grid': engine.state.touchGrid,
+          'balance': engine.state.touchBalance,
+        },
       });
       persistenceError = store == null ? '本地存储不可用' : null;
       _savedChannelKey = channelKey;
@@ -282,6 +304,11 @@ class ControlDesk extends ChangeNotifier {
 
   void selectChannel(String id) {
     engine.state.selected = id;
+    if (engine.state.touchMode) {
+      engine.state
+        ..touchChannel = id
+        ..touchPoint = null;
+    }
     engine.publish();
     _notify();
   }
@@ -298,6 +325,61 @@ class ControlDesk extends ChangeNotifier {
     c.enabled = !c.enabled;
     engine.publish();
     _notify();
+  }
+
+  bool get touchOpen => engine.state.touchMode;
+  String get touchChannel => engine.state.touchChannel;
+
+  void openTouchChannel(String id) {
+    if (!channelIds.contains(id)) return;
+    engine.state
+      ..touchMode = true
+      ..touchChannel = id
+      ..selected = id
+      ..touchPoint = null;
+    engine.publish();
+    coyote.flushLatest();
+    _notify();
+  }
+
+  void closeTouchPanel() {
+    engine.state
+      ..touchMode = false
+      ..touchPoint = null;
+    engine.publish();
+    coyote.flushLatest();
+    _notify();
+  }
+
+  void updateTouchPoint(double x, double y, {bool notify = false}) {
+    if (!engine.state.touchMode) return;
+    engine.state.touchPoint = TouchPoint(x, y);
+    engine.publish();
+    if (notify) _notify();
+  }
+
+  void endTouchPoint() {
+    final point = engine.state.touchPoint;
+    if (point == null || !point.active) return;
+    engine.state.touchPoint = TouchPoint(point.x, point.y, active: false);
+    engine.publish();
+    coyote.flushLatest();
+    _notify();
+  }
+
+  void setTouchGrid(bool value) {
+    if (engine.state.touchGrid == value) return;
+    engine.state.touchGrid = value;
+    unawaited(save());
+    _notify();
+  }
+
+  void setTouchBalance(String id, double value, {bool persist = true}) {
+    if (!channelIds.contains(id)) return;
+    engine.state.touchBalance[id] = value.clamp(0, 1);
+    engine.publish();
+    _notify();
+    if (persist) unawaited(save());
   }
 
   void chooseWaveform(int index) {

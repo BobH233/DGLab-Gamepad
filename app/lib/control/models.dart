@@ -1,6 +1,7 @@
 import 'waveforms.dart';
 
 export 'waveforms.dart';
+export 'touch_control.dart';
 
 const channelIds = ['A', 'B'];
 

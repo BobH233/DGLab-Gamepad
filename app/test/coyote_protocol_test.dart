@@ -12,20 +12,19 @@ void main() {
     final encoder = CoyotePacketEncoder();
     final packet = encoder.encode(frame(a: 80, b: 120), forceStrength: true);
 
-    expect(packet, hasLength(21));
+    expect(packet, hasLength(20));
     expect(packet[0], 0xB0);
-    expect(packet[1], 0x0E);
-    expect(packet[2], 0x0F);
-    expect(packet[3], 80);
-    expect(packet[4], 120);
-    expect(packet.sublist(5, 13), [
+    expect(packet[1], 0xEF);
+    expect(packet[2], 80);
+    expect(packet[3], 120);
+    expect(packet.sublist(4, 12), [
       for (var i = 0; i < 8; i++)
         int.parse(
           waveforms[0].pulseData.first.substring(i * 2, i * 2 + 2),
           radix: 16,
         ),
     ]);
-    expect(packet.sublist(13, 21), [
+    expect(packet.sublist(12, 20), [
       for (var i = 0; i < 8; i++)
         int.parse(
           waveforms[1].pulseData.first.substring(i * 2, i * 2 + 2),
@@ -39,13 +38,11 @@ void main() {
     encoder.encode(frame(a: 80, b: 120), forceStrength: true);
     final unchanged = encoder.encode(frame(a: 80, b: 120));
     expect(unchanged[1], 0x00);
-    expect(unchanged[2], 0x00);
 
     final changedA = encoder.encode(frame(a: 90, b: 120));
-    expect(changedA[1], 0x0E);
-    expect(changedA[2], 0x0C);
-    expect(changedA[3], 90);
-    expect(changedA[4], 120);
+    expect(changedA[1], 0xEC);
+    expect(changedA[2], 90);
+    expect(changedA[3], 120);
   });
 
   test('silence packet clears both strengths and pulses', () {
@@ -54,13 +51,45 @@ void main() {
       forceStrength: true,
       silence: true,
     );
-    expect(packet[1], 0x0E);
-    expect(packet[2], 0x0F);
+    expect(packet, hasLength(20));
+    expect(packet[1], 0xEF);
+    expect(packet[2], 0);
     expect(packet[3], 0);
-    expect(packet[4], 0);
-    expect(packet.sublist(5, 9), everyElement(0x0A));
-    expect(packet.sublist(9, 13), everyElement(0));
-    expect(packet.sublist(13, 17), everyElement(0x0A));
-    expect(packet.sublist(17, 21), everyElement(0));
+    expect(packet.sublist(4, 8), everyElement(0x0A));
+    expect(packet.sublist(8, 12), everyElement(0));
+    expect(packet.sublist(12, 16), everyElement(0x0A));
+    expect(packet.sublist(16, 20), everyElement(0));
   });
+
+  test('dynamic touch frame overrides preset frequency and pulse width', () {
+    final packet = CoyotePacketEncoder().encode(
+      OutputFrame(1, {
+        'A': {
+          'intensity': 90,
+          'enabled': true,
+          'waveformId': waveforms.first.id,
+          'frequencyMs': 10,
+          'waveformIntensity': 100,
+        },
+        'B': {'intensity': 0, 'enabled': false, 'waveformId': waveforms[1].id},
+      }),
+      forceStrength: true,
+    );
+
+    expect(packet.sublist(4, 8), everyElement(10));
+    expect(packet.sublist(8, 12), everyElement(100));
+  });
+
+  test(
+    'balance packet preserves soft limits and writes both balance pairs',
+    () {
+      final packet = CoyotePacketEncoder().encodeBalance(
+        frequencyBalanceA: 128,
+        frequencyBalanceB: 128,
+        pulseBalanceA: 0,
+        pulseBalanceB: 0,
+      );
+      expect(packet, [0xBF, 201, 201, 128, 128, 0, 0]);
+    },
+  );
 }

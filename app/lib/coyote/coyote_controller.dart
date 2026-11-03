@@ -48,6 +48,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   Timer? _scanTimer;
   Timer? _pulseTimer;
   Timer? _batteryTimer;
+  Timer? _ackTimer;
   Characteristic? _writeCharacteristic;
   Characteristic? _batteryCharacteristic;
   OutputFrame? _latestFrame;
@@ -56,6 +57,12 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   bool _writing = false;
   bool _manualDisconnect = false;
   bool _disposed = false;
+  bool _stopPending = false;
+  int? _desiredBalanceA;
+  int? _desiredBalanceB;
+  int? _sentBalanceA;
+  int? _sentBalanceB;
+  int? _awaitingSequence;
 
   bool get connected => status == CoyoteStatus.connected;
   bool get scanning => status == CoyoteStatus.scanning;
@@ -68,6 +75,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   @override
   void accept(OutputFrame frame) {
     _latestFrame = frame;
+    _desiredBalanceA = _balance(frame, 'A') ?? _desiredBalanceA;
+    _desiredBalanceB = _balance(frame, 'B') ?? _desiredBalanceB;
   }
 
   Future<void> scan() async {
@@ -237,32 +246,88 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   Future<void> _sendNext() async {
     final characteristic = _writeCharacteristic;
-    if (_writing || characteristic == null || !connected) return;
+    if (_writing ||
+        characteristic == null ||
+        !connected ||
+        _awaitingSequence != null) {
+      return;
+    }
     _writing = true;
     final force = _forceStrength;
     _forceStrength = false;
+    final stop = _stopPending;
+    _stopPending = false;
     try {
-      await characteristic.write(
-        _encoder.encode(_latestFrame, forceStrength: force),
-        withResponse: false,
+      final balanceA = _desiredBalanceA;
+      final balanceB = _desiredBalanceB;
+      if (balanceA != null &&
+          balanceB != null &&
+          (balanceA != _sentBalanceA || balanceB != _sentBalanceB)) {
+        await characteristic.write(
+          _encoder.encodeBalance(
+            frequencyBalanceA: balanceA,
+            frequencyBalanceB: balanceB,
+            pulseBalanceA: 0,
+            pulseBalanceB: 0,
+          ),
+          withResponse: false,
+        );
+        _sentBalanceA = balanceA;
+        _sentBalanceB = balanceB;
+      }
+      final packet = _encoder.encode(
+        stop ? null : _latestFrame,
+        forceStrength: force,
+        silence: stop,
       );
+      final sequence = packet[1] >> 4;
+      if (sequence != 0) {
+        _awaitingSequence = sequence;
+        _ackTimer?.cancel();
+        _ackTimer = Timer(const Duration(milliseconds: 700), () {
+          _awaitingSequence = null;
+          _ackTimer = null;
+          unawaited(_sendNext());
+        });
+      }
+      await characteristic.write(packet, withResponse: false);
     } catch (value) {
       _resetConnection('发送失败：$value');
     } finally {
       _writing = false;
+      if (_stopPending) unawaited(_sendNext());
     }
   }
 
   Future<void> emergencyStop() async {
     _latestFrame = null;
     _forceStrength = true;
+    _stopPending = true;
+    _awaitingSequence = null;
+    _stopPending = false;
+    _ackTimer?.cancel();
+    _ackTimer = null;
     await _sendNext();
+  }
+
+  void flushLatest() {
+    if (!connected) return;
+    _awaitingSequence = null;
+    _ackTimer?.cancel();
+    _ackTimer = null;
+    unawaited(_sendNext());
   }
 
   void _handleNotification(List<int> value) {
     if (value.length >= 4 && value[0] == 0xB1) {
       deviceStrengthA = value[2].clamp(0, 200);
       deviceStrengthB = value[3].clamp(0, 200);
+      if (_awaitingSequence == value[1]) {
+        _awaitingSequence = null;
+        _ackTimer?.cancel();
+        _ackTimer = null;
+        unawaited(_sendNext());
+      }
       _notify();
     }
   }
@@ -285,6 +350,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _pulseTimer = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
+    _ackTimer?.cancel();
+    _ackTimer = null;
     final write = _writeCharacteristic;
     if (write != null) {
       try {
@@ -307,6 +374,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _pulseTimer = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
+    _ackTimer?.cancel();
+    _ackTimer = null;
     _writeCharacteristic = null;
     _batteryCharacteristic = null;
     unawaited(_notifySubscription?.cancel());
@@ -316,6 +385,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     batteryLevel = null;
     _latestFrame = null;
     _forceStrength = false;
+    _desiredBalanceA = null;
+    _desiredBalanceB = null;
+    _sentBalanceA = null;
+    _sentBalanceB = null;
+    _awaitingSequence = null;
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
     _notify();
@@ -339,12 +413,18 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _ => '蓝牙当前不可用',
   };
 
+  int? _balance(OutputFrame frame, String channel) {
+    final value = frame.channels[channel]?['balance'];
+    return value is num ? value.round().clamp(0, 255) : null;
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _scanTimer?.cancel();
     _pulseTimer?.cancel();
     _batteryTimer?.cancel();
+    _ackTimer?.cancel();
     unawaited(_scanSubscription?.cancel());
     unawaited(_connectionSubscription?.cancel());
     unawaited(_notifySubscription?.cancel());

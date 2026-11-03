@@ -62,6 +62,8 @@ void main() {
       expect(find.text('A 通道'), findsWidgets);
       expect(find.text('快捷操作'), findsNothing);
       expect(find.text('应用选中'), findsNothing);
+      expect(find.byTooltip('打开 A 通道触控'), findsOneWidget);
+      expect(find.byTooltip('打开 B 通道触控'), findsOneWidget);
       expect(find.byType(GridView), findsNothing);
       expect(find.byType(Scrollable), findsOneWidget);
       expect(

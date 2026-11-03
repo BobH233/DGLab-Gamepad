@@ -5,6 +5,7 @@ Flutter 跨 iOS / Android 的手柄控制台，macOS 用于直接调试。当前
 ## 使用
 
 - **控制台**：单击整张 A/B 通道卡片即可选中，设置基础强度、启停、选择波形；显示临时增减与最终强度。停止保留基础值。波形卡片同样是单击应用。
+- **触控面板**：从 A/B 卡片各自的指纹按钮打开二维触控弹窗，横向控制强度、纵向三段控制频率，并支持高低频平衡设置。无触点时不产生输出。
 - **按键绑定**：每个按钮、扳机和摇杆独立配置操作。表单由脚本字段自动生成。
 - **操作脚本**：查看 9 个内置 JS 操作、导入 `.js` 文件、新建脚本。内置与用户脚本使用相同 API 和运行时。
 - **郊狼连接**：控制台状态栏或按键绑定页进入扫描，选择名称以 `47` 开头的 Coyote 3。连接后显示电量与设备回报的 A/B 强度。
@@ -62,7 +63,7 @@ xcodebuild -workspace Runner.xcworkspace -scheme Runner \
 
 ## 当前验证范围
 
-- 43 项测试：输入层、真实 JS 行为/资源限制、Coyote 3 包编码、DG-LAB 脉冲解码、单次触屏选中、绑定编辑、配置持久化/恢复、手机竖屏与桌面布局通过。
+- 51 项测试：输入层、真实 JS 行为/资源限制、Coyote 3 包编码、动态触控频率与强度、九宫格映射、无触点静音、绑定编辑、配置持久化/恢复、手机横竖屏与桌面布局通过。
 - macOS：原生应用构建及控制台视觉检查通过。此前手柄监测实按由用户确认可用；本次控制台仍需用户完整实按验收。
 - iOS：arm64 模拟器构建通过，待真机验证。
 - Android：适配源代码已存在；当前机器缺少 SDK/JDK，尚未编译或真机验证。
@@ -70,4 +71,4 @@ xcodebuild -workspace Runner.xcworkspace -scheme Runner \
 
 16 个波形预设及其原始 DG-LAB 脉冲帧参考自 `BobH233/DG-Lab-Coyote-Game-Hub`，界面按帧频率与强度绘制脉冲柱形。`OutputSink` 同时更新本地预览与 Coyote BLE 适配器；控制包每 100ms 发送一次，App 进入后台、输入失联、编辑或停止时下发零强度。脚本源码、绑定、基础强度与波形保存在应用支持目录的 `control-profile-v1.json`；启停与临时加成不持久化。
 
-详见 [架构](docs/architecture.md)、[Coyote BLE](docs/coyote-ble.md)、[脚本 API](docs/script-api.md)、[第三方声明](docs/third-party-notices.md)、[已有手柄验证](docs/device-validation.md)。QuickJS 本地补丁和许可证保留于 `vendor/quickjs_engine`。
+详见 [架构](docs/architecture.md)、[触控面板](docs/touch-control.md)、[Coyote BLE](docs/coyote-ble.md)、[脚本 API](docs/script-api.md)、[第三方声明](docs/third-party-notices.md)、[已有手柄验证](docs/device-validation.md)。QuickJS 本地补丁和许可证保留于 `vendor/quickjs_engine`。

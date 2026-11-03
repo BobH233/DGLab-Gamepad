@@ -8,6 +8,11 @@ class ControlState {
   Map<String, Map<String, dynamic>> overlays = {};
   int columns = 3;
   int sequence = 0;
+  bool touchMode = false;
+  String touchChannel = 'A';
+  TouchPoint? touchPoint;
+  bool touchGrid = true;
+  Map<String, double> touchBalance = {'A': 0.5, 'B': 0.5};
 
   double offset(String channel) {
     double sum = 0;
@@ -33,24 +38,63 @@ class ControlState {
 
   double effective(String channel) =>
       (channels[channel]!.base + offset(channel)).clamp(0, 200);
+
+  TouchReadout? touchReadout(String channel) {
+    final point = touchPoint;
+    if (!touchMode ||
+        channel != touchChannel ||
+        point == null ||
+        !point.active) {
+      return null;
+    }
+    return mapTouchPoint(
+      x: point.x,
+      y: point.y,
+      intensityCeiling: channels[channel]!.base,
+    );
+  }
+
   OutputFrame frame() => OutputFrame(++sequence, {
-    for (final id in channelIds)
-      id: {
-        'intensity': enabled(id) ? effective(id).round() : 0,
-        'enabled': enabled(id),
-        'waveformId': channels[id]!.waveform,
-      },
+    for (final id in channelIds) id: _channelFrame(id),
   });
+
+  Map<String, dynamic> _channelFrame(String id) {
+    final touchTarget = touchMode && id == touchChannel;
+    final readout = touchTarget ? touchReadout(id) : null;
+    final live = touchTarget
+        ? readout != null && readout.intensity > 0
+        : enabled(id);
+    return {
+      'intensity': touchTarget
+          ? readout?.intensity.round() ?? 0
+          : enabled(id)
+          ? effective(id).round()
+          : 0,
+      'enabled': live,
+      'waveformId': channels[id]!.waveform,
+      if (touchTarget) ...{
+        'frequencyMs': readout?.frequencyMs ?? 10.0,
+        'waveformIntensity': readout == null ? 0 : 100,
+      },
+      if (touchMode) 'balance': encodeBalance(touchBalance[id] ?? 0.5),
+    };
+  }
+
   Map<String, dynamic> context() => {
     for (final id in channelIds)
       id: {
         ...channels[id]!.toJson(),
-        'enabled': enabled(id),
-        'effective': effective(id),
+        'enabled': touchMode && id == touchChannel
+            ? touchReadout(id) != null
+            : enabled(id),
+        'effective': touchMode && id == touchChannel
+            ? touchReadout(id)?.intensity ?? 0
+            : effective(id),
       },
   };
   void stop() {
     overlays.clear();
+    touchPoint = null;
     for (final channel in channels.values) {
       channel.enabled = false;
     }
@@ -64,7 +108,12 @@ class ControlState {
       ..channels = channels.map((k, v) => MapEntry(k, v.copy()))
       ..overlays = Map.from(overlays)
       ..selected = selected
-      ..columns = columns;
+      ..columns = columns
+      ..touchMode = touchMode
+      ..touchChannel = touchChannel
+      ..touchPoint = touchPoint
+      ..touchGrid = touchGrid
+      ..touchBalance = Map.from(touchBalance);
     for (final command in commands) {
       if (command is! Map) throw const FormatException('指令必须是对象');
       draft._apply(bindingId, Map<String, dynamic>.from(command));
@@ -72,6 +121,7 @@ class ControlState {
     channels = draft.channels;
     overlays = draft.overlays;
     selected = draft.selected;
+    touchPoint = draft.touchPoint;
   }
 
   void _apply(String bindingId, Map<String, dynamic> command) {
