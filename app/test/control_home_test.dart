@@ -71,6 +71,24 @@ void main() {
         ),
         findsNWidgets(2),
       );
+      final slider = find.byType(Slider).first;
+      expect(
+        tester.widget<Slider>(slider).allowedInteraction,
+        SliderInteraction.slideThumb,
+      );
+      desk.setBase('A', 100, persist: false);
+      await tester.pump();
+      final sliderRect = tester.getRect(slider);
+      await tester.tapAt(
+        Offset(sliderRect.left + sliderRect.width * 0.8, sliderRect.center.dy),
+      );
+      await tester.pump();
+      expect(desk.engine.state.channels['A']!.base, 100);
+      await tester.dragFrom(sliderRect.center, const Offset(30, 0));
+      await tester.pump();
+      expect(desk.engine.state.channels['A']!.base, greaterThan(100));
+      desk.setBase('A', 0, persist: false);
+      await tester.pump();
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('连接郊狼').first);
       await tester.pump();

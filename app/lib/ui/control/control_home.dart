@@ -492,6 +492,7 @@ class _ControlHomeState extends State<ControlHome> {
                         value: channel.base,
                         min: 0,
                         max: 200,
+                        allowedInteraction: SliderInteraction.slideThumb,
                         label: '${channel.base.round()}',
                         onChanged: (v) =>
                             desk.setBase(id, v.roundToDouble(), persist: false),
