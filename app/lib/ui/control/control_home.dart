@@ -21,7 +21,65 @@ class ControlHome extends StatefulWidget {
 
 class _ControlHomeState extends State<ControlHome> {
   int page = 0;
+  int _lastTouchPanelRequest = 0;
+  bool _openingTouch = false;
   ControlDesk get desk => widget.desk;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastTouchPanelRequest = desk.engine.state.touchPanelRequest;
+    desk.addListener(_handleDeskRequests);
+  }
+
+  @override
+  void didUpdateWidget(ControlHome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.desk != widget.desk) {
+      oldWidget.desk.removeListener(_handleDeskRequests);
+      widget.desk.addListener(_handleDeskRequests);
+      _lastTouchPanelRequest = widget.desk.engine.state.touchPanelRequest;
+    }
+  }
+
+  @override
+  void dispose() {
+    desk.removeListener(_handleDeskRequests);
+    super.dispose();
+  }
+
+  void _handleDeskRequests() {
+    final request = desk.engine.state.touchPanelRequest;
+    if (request == _lastTouchPanelRequest) return;
+    _lastTouchPanelRequest = request;
+    final channel = desk.engine.state.touchPanelRequestChannel;
+    if (channel == null || desk.editing) {
+      return;
+    }
+    if (desk.touchOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && desk.touchOpen) Navigator.of(context).pop();
+      });
+      return;
+    }
+    if (_openingTouch) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          desk.editing ||
+          desk.touchOpen ||
+          _openingTouch ||
+          channel != desk.engine.state.touchPanelRequestChannel) {
+        return;
+      }
+      _openingTouch = true;
+      unawaited(
+        showTouchPanelDialog(context, desk, channel).whenComplete(() {
+          _openingTouch = false;
+        }),
+      );
+    });
+  }
+
   void navigate(int value) {
     if (value == page) return;
     if (value == 0) {

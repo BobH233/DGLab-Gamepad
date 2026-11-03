@@ -9,6 +9,8 @@ class ControlState {
   Map<String, Map<String, dynamic>> overlays = {};
   int columns = 3;
   int sequence = 0;
+  int touchPanelRequest = 0;
+  String? touchPanelRequestChannel;
   bool touchMode = false;
   bool touchSurfaceVisible = false;
   String touchChannel = 'A';
@@ -160,6 +162,8 @@ class ControlState {
       ..overlays = Map.from(overlays)
       ..selected = selected
       ..columns = columns
+      ..touchPanelRequest = touchPanelRequest
+      ..touchPanelRequestChannel = touchPanelRequestChannel
       ..touchMode = touchMode
       ..touchSurfaceVisible = touchSurfaceVisible
       ..touchChannel = touchChannel
@@ -182,6 +186,8 @@ class ControlState {
     channels = draft.channels;
     overlays = draft.overlays;
     selected = draft.selected;
+    touchPanelRequest = draft.touchPanelRequest;
+    touchPanelRequestChannel = draft.touchPanelRequestChannel;
     touchPoint = draft.touchPoint;
     _touchOwner = draft._touchOwner;
   }
@@ -190,6 +196,15 @@ class ControlState {
     final type = command['type'];
     if (type == 'clearOverlay') {
       overlays.remove(bindingId);
+      return;
+    }
+    if (type == 'toggleTouchPanel') {
+      final id = command['channel'];
+      if (!channelIds.contains(id)) {
+        throw const FormatException('通道必须是 A 或 B');
+      }
+      touchPanelRequest++;
+      touchPanelRequestChannel = id as String;
       return;
     }
     if (type == 'touchPoint') {

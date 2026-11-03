@@ -22,6 +22,7 @@ void main() {
       'stick_strength',
       'stick_cursor',
       'confirm',
+      'toggle_touch',
     ]) {
       final runtime = ActionRuntime(
         File('assets/actions/$name.js').readAsStringSync(),
@@ -187,6 +188,24 @@ void main() {
       expect(engine.state.channels['A']!.waveform, 'eea0e4ce');
     },
   );
+  test('Y toggles the current touch panel on each press', () {
+    configure([binding('north', 'toggleTouch', {})]);
+    engine.state.selected = 'B';
+    input({Control.north: 1});
+    expect(engine.state.touchPanelRequest, 1);
+    expect(engine.state.touchPanelRequestChannel, 'B');
+    engine.state
+      ..touchMode = true
+      ..touchChannel = 'B';
+    input({});
+    input({Control.north: 1});
+    expect(engine.state.touchPanelRequest, 2);
+    expect(engine.state.touchPanelRequestChannel, 'B');
+    input({});
+    engine.state.touchMode = false;
+    input({Control.north: 1});
+    expect(engine.state.touchPanelRequest, 3);
+  });
   test('sequence waveform selection is scoped to the target channel', () {
     configure([
       binding('north', 'waveform', {

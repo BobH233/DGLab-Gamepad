@@ -258,6 +258,75 @@ void main() {
     unawaited(stream.close());
     await tester.pump();
   });
+
+  testWidgets('Y toggles the selected channel touch panel', (tester) async {
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Palette.background,
+          colorScheme: const ColorScheme.dark(
+            primary: Palette.yellow,
+            surface: Palette.surface,
+          ),
+        ),
+        home: ControlHome(desk: desk),
+      ),
+    );
+    desk.selectChannel('B');
+    Map<String, dynamic> snapshot(Map<String, double> values) => {
+      'version': 1,
+      'type': 'snapshot',
+      'devices': [
+        {
+          'id': 'pad',
+          'name': 'Pad',
+          'family': 'xbox',
+          'transport': 'usb',
+          'capabilities': ['north'],
+          'values': values,
+        },
+      ],
+    };
+
+    stream.add(snapshot({}));
+    await tester.pump();
+    stream.add(snapshot({'north': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(desk.touchOpen, isTrue);
+    expect(desk.touchChannel, 'B');
+    expect(find.byType(Dialog), findsOneWidget);
+
+    stream.add(snapshot({}));
+    stream.add(snapshot({'north': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsNothing);
+    expect(desk.touchOpen, isFalse);
+
+    stream.add(snapshot({}));
+    stream.add(snapshot({'north': 1}));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(desk.touchOpen, isTrue);
+
+    await tester.tap(find.byTooltip('退出触控面板'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
 }
 
 class _LocalAssets extends CachingAssetBundle {

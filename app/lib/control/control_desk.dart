@@ -38,6 +38,8 @@ class ControlDesk extends ChangeNotifier {
       state.touchPoint?.y,
       state.touchPoint?.active,
       state.touchGrid,
+      state.touchPanelRequest,
+      state.touchPanelRequestChannel,
       for (final id in channelIds) state.touchBalance[id],
       for (final id in channelIds) state.touchHorizontalSplits[id]?.join(':'),
       for (final id in channelIds) state.touchVerticalSplits[id]?.join(':'),
@@ -77,6 +79,7 @@ class ControlDesk extends ChangeNotifier {
   }
 
   Future<void> initialize({ControlStore? storage, AssetBundle? assets}) async {
+    var migratedTouchBinding = false;
     try {
       for (final name in [
         'boost',
@@ -88,6 +91,7 @@ class ControlDesk extends ChangeNotifier {
         'stick_strength',
         'stick_cursor',
         'confirm',
+        'toggle_touch',
       ]) {
         final source = await (assets ?? rootBundle).loadString(
           'assets/actions/$name.js',
@@ -144,6 +148,22 @@ class ControlDesk extends ChangeNotifier {
             } catch (e) {
               loadWarnings.add('绑定未载入：$e');
             }
+          }
+          final savedVersion = switch (saved['version']) {
+            final num value => value.toInt(),
+            _ => 1,
+          };
+          if (savedVersion < 2 &&
+              !restored.any((binding) => binding.input == 'north') &&
+              actions.containsKey('builtin.toggleTouch')) {
+            restored.add(
+              const Binding(
+                id: 'north_touch',
+                input: 'north',
+                action: 'builtin.toggleTouch',
+              ),
+            );
+            migratedTouchBinding = true;
           }
           bindings = restored;
           for (final id in channelIds) {
@@ -218,6 +238,7 @@ class ControlDesk extends ChangeNotifier {
         }
       });
       ready = true;
+      if (migratedTouchBinding) await save();
     } catch (e) {
       error = '控制台初始化失败：$e';
     }
@@ -268,6 +289,11 @@ class ControlDesk extends ChangeNotifier {
       config: {'target': 'selected'},
     ),
     const Binding(
+      id: 'north_touch',
+      input: 'north',
+      action: 'builtin.toggleTouch',
+    ),
+    const Binding(
       id: 'ls',
       input: 'leftStickVector',
       action: 'builtin.stickStrength',
@@ -293,7 +319,7 @@ class ControlDesk extends ChangeNotifier {
     final channelKey = _channelKey;
     try {
       await store?.save({
-        'version': 1,
+        'version': 2,
         'bindings': bindings.map((b) => b.toJson()).toList(),
         'scripts': actions.values
             .where((a) => !a.builtin)

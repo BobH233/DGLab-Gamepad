@@ -84,7 +84,7 @@ void main() {
       final store = ControlStore(File('${dir.path}/profile.json'));
       final valid = ControlDesk.defaultBindings().first.toJson();
       await store.save({
-        'version': 1,
+        'version': 2,
         'bindings': [
           valid,
           valid,
@@ -108,4 +108,25 @@ void main() {
       }
     },
   );
+  test('version 1 profiles gain the default Y touch binding', () async {
+    final dir = Directory.systemTemp.createTempSync('dglab-migrate-');
+    final store = ControlStore(File('${dir.path}/profile.json'));
+    await store.save({'version': 1, 'bindings': []});
+    final monitor = InputMonitor(
+      events: const Stream.empty(),
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor);
+    try {
+      await desk.initialize(storage: store, assets: _Assets());
+      expect(desk.ready, isTrue, reason: desk.error);
+      final touch = desk.bindings.singleWhere((b) => b.input == 'north');
+      expect(touch.action, 'builtin.toggleTouch');
+      expect((await store.read())!['version'], 2);
+    } finally {
+      desk.dispose();
+      monitor.dispose();
+      await dir.delete(recursive: true);
+    }
+  });
 }
