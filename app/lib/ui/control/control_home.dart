@@ -213,26 +213,42 @@ class _ControlHomeState extends State<ControlHome> {
                       if (page == 0) desk.endEdit();
                     },
                   ),
-                  IconButton(
-                    tooltip: '操作位置自动滚动',
-                    isSelected: desk.autoScrollToAction,
-                    icon: const Icon(
-                      Icons.center_focus_weak,
-                      color: Palette.muted,
-                    ),
-                    selectedIcon: const Icon(
-                      Icons.center_focus_strong,
-                      color: Palette.yellow,
-                    ),
+                  TextButton.icon(
                     onPressed: () =>
                         desk.setAutoScrollToAction(!desk.autoScrollToAction),
+                    style: TextButton.styleFrom(
+                      foregroundColor: desk.autoScrollToAction
+                          ? Palette.yellow
+                          : Palette.muted,
+                      minimumSize: const Size(0, 40),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    icon: Icon(
+                      desk.autoScrollToAction
+                          ? Icons.center_focus_strong
+                          : Icons.center_focus_weak,
+                      size: 18,
+                    ),
+                    label: Text('自动滚动：${desk.autoScrollToAction ? '开' : '关'}'),
                   ),
                   const SizedBox(width: 4),
-                  OutlinedButton.icon(
-                    onPressed: desk.stopAll,
-                    icon: const Icon(Icons.stop_rounded, size: 18),
-                    label: const Text('全部停止'),
-                  ),
+                  if (MediaQuery.sizeOf(context).width < 360)
+                    IconButton(
+                      tooltip: '全部停止',
+                      onPressed: desk.stopAll,
+                      icon: const Icon(Icons.stop_rounded, size: 18),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: desk.stopAll,
+                      icon: const Icon(Icons.stop_rounded, size: 18),
+                      label: const Text('全部停止'),
+                    ),
                 ],
               ),
             ),

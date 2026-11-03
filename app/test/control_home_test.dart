@@ -132,7 +132,11 @@ void main() {
       await tester.tap(find.byTooltip('启动 A 通道'));
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isTrue);
-      await tester.tap(find.text('全部停止'));
+      await tester.tap(
+        find.text('全部停止').evaluate().isEmpty
+            ? find.byTooltip('全部停止')
+            : find.text('全部停止'),
+      );
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isFalse);
       expect(desk.engine.state.channels['A']!.base, heldValue);
@@ -340,16 +344,12 @@ void main() {
     expect(updatedChannelRect.top, greaterThanOrEqualTo(viewport.top));
     expect(updatedChannelRect.bottom, lessThanOrEqualTo(viewport.bottom));
 
-    final follow = find
-        .ancestor(
-          of: find.byTooltip('操作位置自动滚动'),
-          matching: find.byType(IconButton),
-        )
-        .first;
-    expect(tester.widget<IconButton>(follow).isSelected, isTrue);
+    final follow = find.textContaining('自动滚动');
+    expect(find.textContaining('自动滚动'), findsOneWidget);
     await tester.tap(follow);
     await tester.pump();
     expect(desk.autoScrollToAction, isFalse);
+    expect(find.text('自动滚动：关'), findsOneWidget);
     stream.add(snapshot({}));
     await tester.pump();
     position.jumpTo(position.maxScrollExtent);
