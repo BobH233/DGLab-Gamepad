@@ -49,102 +49,104 @@ class _MonitorScreenState extends State<MonitorScreen> {
           final session = monitor.session;
           final device = session.device;
           final state = session.state;
-          return SingleChildScrollView(
+          return ListView(
             padding: EdgeInsets.symmetric(
               horizontal: MediaQuery.sizeOf(context).width < 600 ? 20 : 40,
               vertical: 28,
             ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1160),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: '返回控制台',
-                          onPressed: () => Navigator.maybePop(context),
-                          icon: const Icon(
-                            Icons.arrow_back_rounded,
-                            color: Palette.yellow,
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1160),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: '返回控制台',
+                            onPressed: () => Navigator.maybePop(context),
+                            icon: const Icon(
+                              Icons.arrow_back_rounded,
+                              color: Palette.yellow,
+                            ),
+                            visualDensity: VisualDensity.compact,
                           ),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        const SizedBox(width: 6),
-                        const Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'DG-LAB',
-                                  style: TextStyle(
-                                    color: Palette.yellow,
-                                    fontSize: 25,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.8,
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'DG-LAB',
+                                    style: TextStyle(
+                                      color: Palette.yellow,
+                                      fontSize: 25,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.8,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(width: 20),
-                                Text(
-                                  '手柄监测',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Palette.muted,
+                                  SizedBox(width: 20),
+                                  Text(
+                                    '手柄监测',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Palette.muted,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: '复制输入记录',
-                          onPressed: () => _copy(context),
-                          icon: const Icon(
-                            Icons.ios_share_rounded,
-                            size: 20,
-                            color: Palette.yellow,
+                          IconButton(
+                            tooltip: '复制输入记录',
+                            onPressed: () => _copy(context),
+                            icon: const Icon(
+                              Icons.ios_share_rounded,
+                              size: 20,
+                              color: Palette.yellow,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 26),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final compact = constraints.maxWidth < 720;
-                        final controller = _controllerPanel(
-                          context,
-                          device,
-                          state,
-                        );
-                        final data = _dataPanel(context);
-                        return compact
-                            ? Column(
-                                children: [
-                                  controller,
-                                  const SizedBox(height: 18),
-                                  data,
-                                ],
-                              )
-                            : Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(flex: 8, child: controller),
-                                  const SizedBox(width: 22),
-                                  Expanded(flex: 4, child: data),
-                                ],
-                              );
-                      },
-                    ),
-                    const SizedBox(height: 22),
-                    _diagnostics(context),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: 26),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 720;
+                          final controller = _controllerPanel(
+                            context,
+                            device,
+                            state,
+                          );
+                          final data = _dataPanel(context);
+                          return compact
+                              ? Column(
+                                  children: [
+                                    controller,
+                                    const SizedBox(height: 18),
+                                    data,
+                                  ],
+                                )
+                              : Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(flex: 8, child: controller),
+                                    const SizedBox(width: 22),
+                                    Expanded(flex: 4, child: data),
+                                  ],
+                                );
+                        },
+                      ),
+                      const SizedBox(height: 22),
+                      _diagnostics(context),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           );
         },
       ),
@@ -540,54 +542,44 @@ class _MonitorScreenState extends State<MonitorScreen> {
               ),
             )
           else
-            SizedBox(
-              height: 190,
-              child: ListView.builder(
-                itemCount: monitor.history.length,
-                itemBuilder: (context, i) {
-                  final event = monitor.history[i];
-                  final values = event['values'] as Map<String, double>;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 82,
-                          child: Text(
-                            '${((event['timeMs'] as int) / 1000).toStringAsFixed(2)} s',
-                            style: _mono.copyWith(
-                              fontSize: 11,
-                              color: Palette.muted,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            values.isEmpty
-                                ? '设备切换'
-                                : values.entries
-                                      .map(
-                                        (e) =>
-                                            '${e.key}  ${e.value.toStringAsFixed(3)}',
-                                      )
-                                      .join('    '),
-                            style: _mono.copyWith(
-                              fontSize: 11,
-                              color: Palette.text,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+            Column(
+              children: [
+                for (final event in monitor.history) _historyRow(event),
+              ],
             ),
         ],
       ),
     ),
   );
+
+  Widget _historyRow(Map<String, dynamic> event) {
+    final values = event['values'] as Map<String, double>;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(
+              '${((event['timeMs'] as int) / 1000).toStringAsFixed(2)} s',
+              style: _mono.copyWith(fontSize: 11, color: Palette.muted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              values.isEmpty
+                  ? '设备切换'
+                  : values.entries
+                        .map((e) => '${e.key}  ${e.value.toStringAsFixed(3)}')
+                        .join('    '),
+              style: _mono.copyWith(fontSize: 11, color: Palette.text),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _StickPlot extends CustomPainter {

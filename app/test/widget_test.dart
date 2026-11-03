@@ -87,6 +87,8 @@ void main() {
         ),
       );
       expect(find.text('等待手柄连接'), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
       stream.add(packet({}));
       await tester.pump();
       await tester.pump();
@@ -101,6 +103,27 @@ void main() {
       await tester.tap(find.byTooltip('暂停监测'));
       await tester.pump();
       expect(find.text('已暂停'), findsOneWidget);
+      await tester.tap(find.byTooltip('继续监测'));
+      await tester.pump();
+      final scrollable = find.byType(Scrollable);
+      await tester.drag(find.byType(ListView), const Offset(0, -320));
+      await tester.pump();
+      final offset = tester.state<ScrollableState>(scrollable).position.pixels;
+      expect(offset, greaterThan(0));
+      stream.add(packet({'south': 0, 'leftTrigger': 0.4}));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.state<ScrollableState>(scrollable).position.pixels,
+        closeTo(offset, 0.1),
+      );
+      await tester.ensureVisible(find.text('输入记录'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('输入记录'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Scrollable), findsOneWidget);
+      expect(find.textContaining('leftTrigger'), findsWidgets);
+      expect(tester.takeException(), isNull);
       monitor.dispose();
       unawaited(stream.close());
       await tester.pumpWidget(const SizedBox());
