@@ -122,7 +122,7 @@ class _LiveWaveformViewState extends State<LiveWaveformView>
 }
 
 class _LivePulsePainter extends CustomPainter {
-  static const _sampleSpacing = 5.0;
+  static const _sampleSpacing = 8.0;
 
   final Waveform waveform;
   final String channel;

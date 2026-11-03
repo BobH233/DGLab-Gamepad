@@ -27,7 +27,8 @@ class OutputPulseSequencer {
     final frequencyMs = values?['frequencyMs'];
     final waveformIntensity = values?['waveformIntensity'];
     if (frequencyMs is num && waveformIntensity is num) {
-      _resetChannel(channel);
+      _prepareWaveform(channel, values?['waveformId']);
+      _advance(channel);
       final frequency = encodeWaveformFrequency(frequencyMs.toDouble());
       final strength = waveformIntensity.round().clamp(0, 100);
       return OutputPulseFrame([
@@ -44,15 +45,7 @@ class OutputPulseSequencer {
       return OutputPulseFrame.blank();
     }
 
-    final previousWaveform = channel == 'A' ? _waveformA : _waveformB;
-    if (previousWaveform != waveform.id) {
-      _resetChannel(channel);
-      if (channel == 'A') {
-        _waveformA = waveform.id;
-      } else {
-        _waveformB = waveform.id;
-      }
-    }
+    _prepareWaveform(channel, waveform.id);
     final index = channel == 'A' ? _indexA : _indexB;
     final current = index % waveform.pulseData.length;
     if (channel == 'A') {
@@ -70,6 +63,32 @@ class OutputPulseSequencer {
 
   void resetChannel(String channel) {
     _resetChannel(channel);
+  }
+
+  void _prepareWaveform(String channel, Object? waveformId) {
+    final previousWaveform = channel == 'A' ? _waveformA : _waveformB;
+    if (previousWaveform == waveformId) return;
+    _resetChannel(channel);
+    if (channel == 'A') {
+      _waveformA = waveformId is String ? waveformId : null;
+    } else {
+      _waveformB = waveformId is String ? waveformId : null;
+    }
+  }
+
+  void _advance(String channel) {
+    final waveformId = channel == 'A' ? _waveformA : _waveformB;
+    final waveform = waveforms
+        .where((item) => item.id == waveformId)
+        .firstOrNull;
+    if (waveform == null || waveform.pulseData.isEmpty) return;
+    final index = channel == 'A' ? _indexA : _indexB;
+    final next = (index + 1) % waveform.pulseData.length;
+    if (channel == 'A') {
+      _indexA = next;
+    } else {
+      _indexB = next;
+    }
   }
 
   void _resetChannel(String channel) {
@@ -99,7 +118,6 @@ class OutputWaveformTrace extends ChangeNotifier implements OutputSink {
   late final Timer _timer;
   OutputFrame? _latestFrame;
   Set<String> _activeChannels = const {};
-  final Map<String, String?> _sources = {};
 
   OutputWaveformTrace({bool autoStart = true}) {
     _timer = Timer.periodic(sampleInterval, (_) => _sample());
@@ -115,73 +133,31 @@ class OutputWaveformTrace extends ChangeNotifier implements OutputSink {
         if (frame.channels[id]?['enabled'] == true) id,
     };
     _latestFrame = frame;
-    if (active.isEmpty) {
-      _sequencer.reset();
-      _sources.clear();
-      _clearSamples();
-      _activeChannels = active;
-      return;
-    }
-    if (_activeChannels.isEmpty) {
-      _sequencer.reset();
-    }
-    var changed = false;
-    for (final id in channelIds) {
-      final values = frame.channels[id];
-      if (!active.contains(id)) {
-        if (_activeChannels.contains(id)) {
-          _samples[id] = const [];
-          changed = true;
-        }
-        _sequencer.resetChannel(id);
-        _sources.remove(id);
-        continue;
-      }
-      final source =
-          values?['frequencyMs'] is num && values?['waveformIntensity'] is num
-          ? 'touch'
-          : 'waveform:${values?['waveformId']}';
-      if (_sources[id] != source) {
-        _samples[id] = const [];
-        _sequencer.resetChannel(id);
-        _sources[id] = source;
-        changed = true;
-      }
-    }
     _activeChannels = active;
-    if (changed) notifyListeners();
   }
 
   void _sample() {
     final frame = _latestFrame;
-    if (frame == null || _activeChannels.isEmpty) return;
+    if (frame == null) return;
     var changed = false;
     for (final id in channelIds) {
-      if (!_activeChannels.contains(id)) {
-        if (_samples[id]!.isNotEmpty) {
-          _samples[id] = const [];
-          changed = true;
-        }
+      final active = _activeChannels.contains(id);
+      if (!active && _samples[id]!.isEmpty) {
         continue;
       }
       final pulse = _sequencer.next(frame, id);
-      final next = [..._samples[id]!, ...pulse.samples];
+      final next = [
+        ..._samples[id]!,
+        if (active)
+          ...pulse.samples
+        else
+          for (final _ in pulse.samples) const PulseSample(10, 0),
+      ];
       if (next.length > maxSamples) {
         next.removeRange(0, next.length - maxSamples);
       }
       _samples[id] = List.unmodifiable(next);
       changed = true;
-    }
-    if (changed) notifyListeners();
-  }
-
-  void _clearSamples() {
-    var changed = false;
-    for (final id in channelIds) {
-      if (_samples[id]!.isNotEmpty) {
-        _samples[id] = const [];
-        changed = true;
-      }
     }
     if (changed) notifyListeners();
   }

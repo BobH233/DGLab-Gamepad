@@ -48,7 +48,7 @@ void main() {
     expect(changedA[3], 120);
   });
 
-  test('inactive channels reset to the first waveform frame', () {
+  test('inactive time advances the cached waveform phase', () {
     final encoder = CoyotePacketEncoder();
     final active = OutputFrame(1, {
       'A': {'enabled': true, 'intensity': 80, 'waveformId': waveforms[0].id},
@@ -64,7 +64,14 @@ void main() {
     final restarted = encoder.encode(active);
 
     expect(stopped.sublist(4, 12), [10, 10, 10, 10, 0, 0, 0, 0]);
-    expect(restarted.sublist(4, 12), first.sublist(4, 12));
+    expect(restarted.sublist(4, 12), isNot(first.sublist(4, 12)));
+    expect(restarted.sublist(4, 12), [
+      for (var i = 0; i < 8; i++)
+        int.parse(
+          waveforms[0].pulseData[2].substring(i * 2, i * 2 + 2),
+          radix: 16,
+        ),
+    ]);
   });
 
   test('deferred strength change keeps waveform stream alive', () {
@@ -229,7 +236,28 @@ void main() {
           'B': {'enabled': false},
         }),
       );
-      expect(trace.samplesFor('A'), isEmpty);
+      expect(trace.samplesFor('A'), hasLength(4));
+      await Future<void>.delayed(
+        OutputWaveformTrace.sampleInterval + const Duration(milliseconds: 20),
+      );
+      final withGap = trace.samplesFor('A');
+      expect(withGap.length, greaterThan(4));
+      expect(withGap.skip(4), everyElement(const PulseSample(10, 0)));
+
+      trace.accept(
+        OutputFrame(3, {
+          'A': {
+            'enabled': true,
+            'intensity': 80,
+            'waveformId': waveforms[0].id,
+          },
+          'B': {'enabled': false},
+        }),
+      );
+      await Future<void>.delayed(
+        OutputWaveformTrace.sampleInterval + const Duration(milliseconds: 20),
+      );
+      expect(trace.samplesFor('A').length, greaterThan(withGap.length));
       trace.dispose();
     },
   );
