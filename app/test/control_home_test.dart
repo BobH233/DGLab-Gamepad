@@ -195,6 +195,39 @@ void main() {
       });
     });
   }
+
+  testWidgets('Touch movement refreshes the preview at 30 FPS', (tester) async {
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    desk.engine.state.channels['A']!.base = 120;
+    desk.openTouchChannel('A');
+    var notifications = 0;
+    void countNotifications() => notifications++;
+    desk.addListener(countNotifications);
+
+    desk.updateTouchPoint(0.5, 0.5);
+    desk.updateTouchPoint(0.6, 0.5);
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(notifications, 0);
+    await tester.pump(const Duration(milliseconds: 17));
+    expect(notifications, 1);
+
+    desk.updateTouchPoint(0.7, 0.5);
+    desk.updateTouchPoint(0.8, 0.5);
+    await tester.pump(const Duration(milliseconds: 33));
+    expect(notifications, 2);
+
+    desk.removeListener(countNotifications);
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
 }
 
 class _LocalAssets extends CachingAssetBundle {

@@ -22,6 +22,7 @@ class ControlDesk extends ChangeNotifier {
   StreamSubscription<dynamic>? _subscription;
   Timer? _timer;
   Timer? _saveTimer;
+  Timer? _touchNotifyTimer;
   String _savedChannelKey = '';
   String get _channelKey => engine.state.channels.values
       .map((c) => '${c.base}:${c.waveform}')
@@ -357,6 +358,8 @@ class ControlDesk extends ChangeNotifier {
   }
 
   void closeTouchPanel() {
+    _touchNotifyTimer?.cancel();
+    _touchNotifyTimer = null;
     engine.state
       ..touchMode = false
       ..touchPoint = null;
@@ -369,10 +372,19 @@ class ControlDesk extends ChangeNotifier {
     if (!engine.state.touchMode) return;
     engine.state.touchPoint = TouchPoint(x, y);
     engine.publish();
-    if (notify) _notify();
+    if (notify) {
+      _notify();
+    } else {
+      _touchNotifyTimer ??= Timer(const Duration(milliseconds: 33), () {
+        _touchNotifyTimer = null;
+        _notify();
+      });
+    }
   }
 
   void endTouchPoint() {
+    _touchNotifyTimer?.cancel();
+    _touchNotifyTimer = null;
     final point = engine.state.touchPoint;
     if (point == null || !point.active) return;
     engine.state.touchPoint = TouchPoint(point.x, point.y, active: false);
@@ -570,6 +582,7 @@ class ControlDesk extends ChangeNotifier {
     _disposed = true;
     _timer?.cancel();
     _saveTimer?.cancel();
+    _touchNotifyTimer?.cancel();
     if (ready && _channelKey != _savedChannelKey) unawaited(save());
     _subscription?.cancel();
     coyote.removeListener(_notify);
