@@ -1,0 +1,7 @@
+name: gamepad_core
+description: Platform-independent physical gamepad state and normalization.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.10.3

@@ -1,0 +1,385 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:gamepad_core/gamepad_core.dart';
+import '../input/input_monitor.dart';
+import '../scripting/action_runtime.dart';
+import 'control_engine.dart';
+import 'control_store.dart';
+import 'models.dart';
+
+class ControlDesk extends ChangeNotifier {
+  final InputMonitor monitor;
+  final PreviewOutputSink output = PreviewOutputSink();
+  late final ControlEngine engine = ControlEngine(output: output);
+  final Map<String, ActionDefinition> actions = {};
+  List<Binding> bindings = [];
+  final Stopwatch clock = Stopwatch()..start();
+  StreamSubscription<dynamic>? _subscription;
+  Timer? _timer;
+  Timer? _saveTimer;
+  String _savedChannelKey = '';
+  String get _channelKey => engine.state.channels.values
+      .map((c) => '${c.base}:${c.waveform}')
+      .join('|');
+
+  void _persistChanges() {
+    if (_channelKey == _savedChannelKey || _saveTimer != null) return;
+    _saveTimer = Timer(const Duration(milliseconds: 600), () {
+      _saveTimer = null;
+      unawaited(save());
+    });
+  }
+
+  ControlStore? store;
+  bool ready = false;
+  bool _disposed = false;
+  String? error;
+  String? persistenceError;
+  final List<String> loadWarnings = [];
+  ControlDesk(this.monitor);
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> initialize({ControlStore? storage, AssetBundle? assets}) async {
+    try {
+      for (final name in [
+        'boost',
+        'linear',
+        'select',
+        'toggle',
+        'waveform',
+        'navigate',
+        'stick_strength',
+        'stick_cursor',
+        'confirm',
+      ]) {
+        final source = await (assets ?? rootBundle).loadString(
+          'assets/actions/$name.js',
+        );
+        if (_disposed) return;
+        final runtime = ActionRuntime(source, builtin: true);
+        actions[runtime.definition.id] = runtime.definition;
+        runtime.dispose();
+      }
+      bindings = defaultBindings();
+      try {
+        store = storage ?? await ControlStore.open();
+        if (_disposed) return;
+        final saved = await store!.read();
+        if (_disposed) return;
+        if (saved != null) {
+          for (final source in (saved['scripts'] as List? ?? []).take(32)) {
+            try {
+              final runtime = ActionRuntime(source as String);
+              if (actions.containsKey(runtime.definition.id)) {
+                runtime.dispose();
+                throw const FormatException('脚本 ID 重复');
+              }
+              actions[runtime.definition.id] = runtime.definition;
+              runtime.dispose();
+            } catch (e) {
+              loadWarnings.add('脚本未载入：$e');
+            }
+          }
+          final restored = <Binding>[];
+          for (final item in saved['bindings'] as List? ?? []) {
+            try {
+              final binding = Binding.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              );
+              if (!actions.containsKey(binding.action)) {
+                throw const FormatException('操作缺失');
+              }
+              final definition = actions[binding.action]!;
+              final kind = inputKind(binding.input);
+              if (!inputLabels.containsKey(binding.input) ||
+                  (!definition.inputs.contains(kind) &&
+                      !(kind == 'trigger' &&
+                          definition.inputs.contains('button'))) ||
+                  !binding.threshold.isFinite ||
+                  restored.length >= 24 ||
+                  restored.any(
+                    (b) => b.id == binding.id || b.input == binding.input,
+                  )) {
+                throw const FormatException('绑定输入无效或重复');
+              }
+              definition.validateConfig(binding.config);
+              restored.add(binding);
+            } catch (e) {
+              loadWarnings.add('绑定未载入：$e');
+            }
+          }
+          bindings = restored;
+          for (final id in channelIds) {
+            final data = (saved['channels'] as Map?)?[id] as Map?;
+            final base = data?['base'];
+            if (base is num && base.isFinite) {
+              engine.state.channels[id]!.base = base.toDouble().clamp(0, 200);
+            }
+            final wave = canonicalWaveformId(data?['waveform']);
+            if (waveforms.any((w) => w.id == wave)) {
+              engine.state.channels[id]!.waveform = wave;
+              engine.state.channels[id]!.cursor = waveforms.indexWhere(
+                (w) => w.id == wave,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        persistenceError = '读取配置失败：$e';
+      }
+      if (_disposed) return;
+      engine.configure(bindings, actions);
+      _savedChannelKey = _channelKey;
+      _subscription = monitor.frames.listen((frame) {
+        if (frame.status == InputStatus.paused ||
+            frame.status == InputStatus.error ||
+            frame.status == InputStatus.stale) {
+          engine.stopAll();
+        }
+        engine.input(
+          frame.state,
+          live: !editing && frame.status == InputStatus.live,
+          deviceId: frame.deviceId,
+        );
+        _persistChanges();
+        _notify();
+      });
+      engine.input(
+        monitor.session.state,
+        live: monitor.session.status == InputStatus.live,
+        deviceId: monitor.session.selectedId,
+      );
+      _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+        if (!editing) engine.tick(clock.elapsed);
+        _persistChanges();
+        _notify();
+      });
+      ready = true;
+    } catch (e) {
+      error = '控制台初始化失败：$e';
+    }
+    _notify();
+  }
+
+  static List<Binding> defaultBindings() => [
+    const Binding(
+      id: 'lt',
+      input: 'leftTrigger',
+      action: 'builtin.linear',
+      config: {'target': 'A', 'unit': 'absolute', 'amount': 30},
+    ),
+    const Binding(
+      id: 'rt',
+      input: 'rightTrigger',
+      action: 'builtin.linear',
+      config: {'target': 'B', 'unit': 'absolute', 'amount': 30},
+    ),
+    const Binding(
+      id: 'lb',
+      input: 'leftShoulder',
+      action: 'builtin.boost',
+      config: {'target': 'A', 'amount': 30, 'mode': 'hold'},
+    ),
+    const Binding(
+      id: 'rb',
+      input: 'rightShoulder',
+      action: 'builtin.boost',
+      config: {'target': 'B', 'amount': 30, 'mode': 'hold'},
+    ),
+    const Binding(
+      id: 'select',
+      input: 'view',
+      action: 'builtin.select',
+      config: {'channel': 'toggle'},
+    ),
+    const Binding(
+      id: 'start',
+      input: 'menu',
+      action: 'builtin.toggle',
+      config: {'target': 'selected', 'mode': 'toggle'},
+    ),
+    const Binding(
+      id: 'confirm',
+      input: 'south',
+      action: 'builtin.confirm',
+      config: {'target': 'selected'},
+    ),
+    const Binding(
+      id: 'ls',
+      input: 'leftStickVector',
+      action: 'builtin.stickStrength',
+      config: {'target': 'selected'},
+    ),
+    const Binding(
+      id: 'rs',
+      input: 'rightStickVector',
+      action: 'builtin.stickCursor',
+      config: {'target': 'selected'},
+    ),
+    for (final direction in ['up', 'down', 'left', 'right'])
+      Binding(
+        id: 'dpad_$direction',
+        input: direction,
+        action: 'builtin.navigate',
+        config: {'target': 'selected', 'direction': direction},
+      ),
+  ];
+  Future<void> save() async {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    final channelKey = _channelKey;
+    try {
+      await store?.save({
+        'version': 1,
+        'bindings': bindings.map((b) => b.toJson()).toList(),
+        'scripts': actions.values
+            .where((a) => !a.builtin)
+            .map((a) => a.source)
+            .toList(),
+        'channels': engine.state.channels.map(
+          (k, v) => MapEntry(k, {'base': v.base, 'waveform': v.waveform}),
+        ),
+      });
+      persistenceError = store == null ? '本地存储不可用' : null;
+      _savedChannelKey = channelKey;
+    } catch (e) {
+      persistenceError = '保存失败：$e';
+    }
+    _notify();
+  }
+
+  void selectChannel(String id) {
+    engine.state.selected = id;
+    engine.publish();
+    _notify();
+  }
+
+  void setBase(String id, double value, {bool persist = true}) {
+    engine.state.channels[id]!.base = value.clamp(0, 200);
+    engine.publish();
+    _notify();
+    if (persist) unawaited(save());
+  }
+
+  void toggle(String id) {
+    final c = engine.state.channels[id]!;
+    c.enabled = !c.enabled;
+    engine.publish();
+    _notify();
+  }
+
+  void chooseWaveform(int index) {
+    final c = engine.state.channels[engine.state.selected]!;
+    c.cursor = index;
+    c.waveform = waveforms[index].id;
+    engine.publish();
+    _notify();
+    unawaited(save());
+  }
+
+  void focusWaveform(int index) {
+    engine.state.channels[engine.state.selected]!.cursor = index;
+    _notify();
+  }
+
+  void stopAll() {
+    engine.stopAll();
+    _notify();
+  }
+
+  void suspendBindings() {
+    engine.cancel();
+    _notify();
+  }
+
+  void resumeBindings() {
+    engine.input(
+      monitor.session.state,
+      live: monitor.session.status == InputStatus.live,
+      deviceId: monitor.session.selectedId,
+    );
+  }
+
+  bool editing = false;
+  void beginEdit() {
+    editing = true;
+    engine.stopAll();
+    _notify();
+  }
+
+  void endEdit() {
+    editing = false;
+    engine.cancel();
+    _notify();
+  }
+
+  Future<void> setBinding(Binding binding) async {
+    final next = [...bindings.where((b) => b.input != binding.input), binding];
+    engine.configure(next, actions);
+    bindings = next;
+    _notify();
+    await save();
+  }
+
+  Future<void> removeBinding(String id) async {
+    final next = bindings.where((b) => b.id != id).toList();
+    engine.configure(next, actions);
+    bindings = next;
+    _notify();
+    await save();
+  }
+
+  Future<void> resetBindings() async {
+    final next = defaultBindings();
+    engine.configure(next, actions);
+    bindings = next;
+    _notify();
+    await save();
+  }
+
+  ActionDefinition validateScript(String source) {
+    if (actions.values.where((a) => !a.builtin).length >= 32) {
+      throw const FormatException('最多导入 32 个脚本');
+    }
+    final runtime = ActionRuntime(source);
+    final definition = runtime.definition;
+    runtime.dispose();
+    if (actions.containsKey(definition.id)) {
+      throw const FormatException('操作 ID 已存在，请换一个 ID');
+    }
+    return definition;
+  }
+
+  Future<void> install(ActionDefinition definition) async {
+    if (actions.containsKey(definition.id)) {
+      throw const FormatException('操作 ID 已存在');
+    }
+    actions[definition.id] = definition;
+    await save();
+    _notify();
+  }
+
+  Future<void> uninstall(String id) async {
+    if (actions[id]?.builtin != false) return;
+    final next = bindings.where((b) => b.action != id).toList();
+    engine.configure(next, actions);
+    bindings = next;
+    actions.remove(id);
+    await save();
+    _notify();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _timer?.cancel();
+    _saveTimer?.cancel();
+    if (ready && _channelKey != _savedChannelKey) unawaited(save());
+    _subscription?.cancel();
+    engine.dispose();
+    super.dispose();
+  }
+}

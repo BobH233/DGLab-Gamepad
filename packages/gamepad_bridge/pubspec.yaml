@@ -1,0 +1,23 @@
+name: gamepad_bridge
+description: Native operating-system game controller input for Flutter.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.10.3
+  flutter: '>=3.38.0'
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: GamepadBridgePlugin
+        sharedDarwinSource: true
+      macos:
+        pluginClass: GamepadBridgePlugin
+        sharedDarwinSource: true
+      android:
+        package: com.dglab.gamepad_bridge
+        pluginClass: GamepadBridgePlugin

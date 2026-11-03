@@ -1,0 +1,12 @@
+.DS_Store
+.dart_tool/
+**/.dart_tool/
+**/build/
+**/.flutter-plugins-dependencies
+**/Flutter/ephemeral/
+**/Pods/
+**/.symlinks/
+**/local.properties
+**/.gradle/
+docs/reference/
+vendor/quickjs_engine/macos/Frameworks/*.dylib

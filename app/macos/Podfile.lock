@@ -1,0 +1,35 @@
+PODS:
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - FlutterMacOS (1.0.0)
+  - gamepad_bridge (0.1.0):
+    - Flutter
+    - FlutterMacOS
+  - quickjs_engine (0.1.0):
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - FlutterMacOS (from `Flutter/ephemeral`)
+  - gamepad_bridge (from `Flutter/ephemeral/.symlinks/plugins/gamepad_bridge/darwin`)
+  - quickjs_engine (from `Flutter/ephemeral/.symlinks/plugins/quickjs_engine/macos`)
+
+EXTERNAL SOURCES:
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  FlutterMacOS:
+    :path: Flutter/ephemeral
+  gamepad_bridge:
+    :path: Flutter/ephemeral/.symlinks/plugins/gamepad_bridge/darwin
+  quickjs_engine:
+    :path: Flutter/ephemeral/.symlinks/plugins/quickjs_engine/macos
+
+SPEC CHECKSUMS:
+  file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
+  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  gamepad_bridge: c9e080abcf2f89802ce480d6b37b243f2daee5b0
+  quickjs_engine: c62a53d38577f3f8b1020c9bd2dc217700592231
+
+PODFILE CHECKSUM: 13edfb9e70ac3646927b8e6c9a212ad1d0fa29b2
+
+COCOAPODS: 1.16.2
