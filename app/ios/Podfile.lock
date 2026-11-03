@@ -5,14 +5,27 @@ PODS:
   - gamepad_bridge (0.1.0):
     - Flutter
     - FlutterMacOS
+  - Protobuf (3.29.6)
   - quickjs_engine (0.1.0):
     - Flutter
+  - reactive_ble_mobile (0.0.1):
+    - Flutter
+    - FlutterMacOS
+    - Protobuf (~> 3.5)
+    - SwiftProtobuf (~> 1.0)
+  - SwiftProtobuf (1.39.0)
 
 DEPENDENCIES:
   - file_selector_ios (from `.symlinks/plugins/file_selector_ios/ios`)
   - Flutter (from `Flutter`)
   - gamepad_bridge (from `.symlinks/plugins/gamepad_bridge/darwin`)
   - quickjs_engine (from `.symlinks/plugins/quickjs_engine/ios`)
+  - reactive_ble_mobile (from `.symlinks/plugins/reactive_ble_mobile/darwin`)
+
+SPEC REPOS:
+  trunk:
+    - Protobuf
+    - SwiftProtobuf
 
 EXTERNAL SOURCES:
   file_selector_ios:
@@ -23,12 +36,17 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/gamepad_bridge/darwin"
   quickjs_engine:
     :path: ".symlinks/plugins/quickjs_engine/ios"
+  reactive_ble_mobile:
+    :path: ".symlinks/plugins/reactive_ble_mobile/darwin"
 
 SPEC CHECKSUMS:
   file_selector_ios: ec57ec07954363dd730b642e765e58f199bb621a
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   gamepad_bridge: c9e080abcf2f89802ce480d6b37b243f2daee5b0
+  Protobuf: 8d5596f7468be5400861a6bbfb2dfe9d0d1cde34
   quickjs_engine: 5403c50326ed088c76951b441e277b65faa77319
+  reactive_ble_mobile: ea97709e18fa6f0b0592909725d7ae7e1c595b64
+  SwiftProtobuf: eb2c3c26d43afb22247593e60e3163cdab2a0b4a
 
 PODFILE CHECKSUM: 4b015915ec662986b54bf30ab778da63f7dda016
 

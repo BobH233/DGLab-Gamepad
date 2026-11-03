@@ -10,3 +10,5 @@
 **/.gradle/
 docs/reference/
 vendor/quickjs_engine/macos/Frameworks/*.dylib
+iphone_gamepad_3d_models/
+result.json

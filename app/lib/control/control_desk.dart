@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:gamepad_core/gamepad_core.dart';
+import '../coyote/coyote_controller.dart';
 import '../input/input_monitor.dart';
 import '../scripting/action_runtime.dart';
 import 'control_engine.dart';
@@ -10,8 +11,11 @@ import 'models.dart';
 
 class ControlDesk extends ChangeNotifier {
   final InputMonitor monitor;
+  final CoyoteController coyote;
   final PreviewOutputSink output = PreviewOutputSink();
-  late final ControlEngine engine = ControlEngine(output: output);
+  late final ControlEngine engine = ControlEngine(
+    output: _ControlOutput(output, coyote),
+  );
   final Map<String, ActionDefinition> actions = {};
   List<Binding> bindings = [];
   final Stopwatch clock = Stopwatch()..start();
@@ -22,6 +26,23 @@ class ControlDesk extends ChangeNotifier {
   String get _channelKey => engine.state.channels.values
       .map((c) => '${c.base}:${c.waveform}')
       .join('|');
+  String get _viewKey {
+    final state = engine.state;
+    return [
+      state.selected,
+      state.columns,
+      for (final id in channelIds)
+        [
+          state.channels[id]!.base,
+          state.enabled(id),
+          state.channels[id]!.waveform,
+          state.channels[id]!.cursor,
+          state.effective(id),
+          state.offset(id),
+        ].join(':'),
+      for (final entry in engine.errors.entries) '${entry.key}:${entry.value}',
+    ].join('|');
+  }
 
   void _persistChanges() {
     if (_channelKey == _savedChannelKey || _saveTimer != null) return;
@@ -37,7 +58,10 @@ class ControlDesk extends ChangeNotifier {
   String? error;
   String? persistenceError;
   final List<String> loadWarnings = [];
-  ControlDesk(this.monitor);
+  ControlDesk(this.monitor, {CoyoteController? coyote})
+    : coyote = coyote ?? CoyoteController() {
+    this.coyote.addListener(_notify);
+  }
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -153,9 +177,14 @@ class ControlDesk extends ChangeNotifier {
         deviceId: monitor.session.selectedId,
       );
       _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-        if (!editing) engine.tick(clock.elapsed);
-        _persistChanges();
-        _notify();
+        if (!editing) {
+          final before = _viewKey;
+          engine.tick(clock.elapsed);
+          if (_viewKey != before) {
+            _persistChanges();
+            _notify();
+          }
+        }
       });
       ready = true;
     } catch (e) {
@@ -287,6 +316,7 @@ class ControlDesk extends ChangeNotifier {
 
   void stopAll() {
     engine.stopAll();
+    unawaited(coyote.emergencyStop());
     _notify();
   }
 
@@ -307,6 +337,7 @@ class ControlDesk extends ChangeNotifier {
   void beginEdit() {
     editing = true;
     engine.stopAll();
+    unawaited(coyote.emergencyStop());
     _notify();
   }
 
@@ -379,7 +410,21 @@ class ControlDesk extends ChangeNotifier {
     _saveTimer?.cancel();
     if (ready && _channelKey != _savedChannelKey) unawaited(save());
     _subscription?.cancel();
+    coyote.removeListener(_notify);
+    coyote.dispose();
     engine.dispose();
     super.dispose();
+  }
+}
+
+class _ControlOutput implements OutputSink {
+  final PreviewOutputSink preview;
+  final CoyoteController coyote;
+  _ControlOutput(this.preview, this.coyote);
+
+  @override
+  void accept(OutputFrame frame) {
+    preview.accept(frame);
+    coyote.accept(frame);
   }
 }

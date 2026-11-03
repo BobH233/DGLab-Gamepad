@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:dglab_gamepad/coyote/coyote_controller.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
 import 'package:dglab_gamepad/control/control_desk.dart';
 import 'package:dglab_gamepad/control/control_store.dart';
@@ -28,10 +29,17 @@ void main() {
         events: stream.stream,
         observeLifecycle: false,
       );
-      final desk = ControlDesk(monitor);
+      final coyote = _FakeCoyote();
+      final desk = ControlDesk(monitor, coyote: coyote);
       final storage = _MemoryStore();
       await desk.initialize(storage: storage, assets: _LocalAssets());
       expect(desk.ready, isTrue, reason: desk.error);
+      var idleNotifications = 0;
+      void countIdleNotifications() => idleNotifications++;
+      desk.addListener(countIdleNotifications);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(idleNotifications, 0);
+      desk.removeListener(countIdleNotifications);
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(
@@ -53,7 +61,17 @@ void main() {
       );
       expect(find.text('A 通道'), findsWidgets);
       expect(find.text('快捷操作'), findsNothing);
+      expect(find.byType(GridView), findsNothing);
+      expect(find.byType(Scrollable), findsOneWidget);
       expect(tester.takeException(), isNull);
+      await tester.tap(find.text('连接郊狼').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('郊狼 3'), findsOneWidget);
+      expect(coyote.scanCount, 1);
+      expect(find.text('扫描中'), findsOneWidget);
+      await tester.tap(find.byTooltip('关闭'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('A 强度加一'));
       await desk.save();
       await tester.pump();
@@ -69,7 +87,7 @@ void main() {
       await tester.tap(find.text('B 通道').first);
       await tester.pump();
       expect(desk.engine.state.selected, 'B');
-      final scroll = find.byType(SingleChildScrollView).first;
+      final scroll = find.byType(ListView).first;
       await tester.drag(scroll, const Offset(0, -650));
       await tester.pump();
       expect(tester.takeException(), isNull);
@@ -142,5 +160,16 @@ class _MemoryStore extends ControlStore {
   @override
   Future<void> save(Map<String, dynamic> data) async {
     value = data;
+  }
+}
+
+class _FakeCoyote extends CoyoteController {
+  int scanCount = 0;
+
+  @override
+  Future<void> scan() async {
+    scanCount++;
+    status = CoyoteStatus.scanning;
+    notifyListeners();
   }
 }

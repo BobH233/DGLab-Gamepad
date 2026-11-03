@@ -94,8 +94,11 @@ flowchart LR
   JS --> Commands[经过校验的语义命令]
   Commands --> State[ControlState 基础值 / 临时效果 / 限幅]
   State --> Frame[OutputFrame A/B 期望输出]
-  Frame --> Preview[PreviewOutputSink]
-  Frame -. 后续 .-> Adapter[设备协议与 BLE 适配器]
+  Frame --> Fanout[ControlDesk 输出分流]
+  Fanout --> Preview[PreviewOutputSink]
+  Fanout --> Coyote[CoyoteController]
+  Coyote --> BLE[flutter_reactive_ble]
+  BLE --> Device[Coyote 3]
   UI[Flutter 控制台 / 绑定 / 脚本] --> Desk[ControlDesk]
   Desk --> Engine
   Desk --> Store[ControlStore 本地配置]
@@ -108,12 +111,13 @@ flowchart LR
 - `app/assets/actions`：9 个内置操作的真实 JS 源码；用户脚本沿用相同执行链。
 - `control_desk.dart`：连接 UI、会话、引擎与存储；不包含设备协议。
 - `app/lib/ui/control`：A/B 控制台、自动生成的绑定表单、脚本导入/源码编辑。原有手柄监测页保留。
+- `app/lib/coyote`：Coyote 3 BLE 扫描／连接、通知解析、10Hz 输出循环和 21 字节控制包编码。
 
 按钮和触发器在同步 frames 流中处理，避免漏掉同一帧内的按下/松开。摇杆使用 20Hz 的有界 dt，不把后台积累时间当作大幅增量。UI 读取同一 ControlState，显示基础强度、临时加成、最终强度、启停、选中通道与波形光标。IMU 不参与业务控制。
 
 停用通道只把输出归零，基础强度保留。全部停止、进入编辑、输入失联、后台和脚本故障停止两路并清除临时效果。恢复不会自动启用通道。按住型动作锁定激活时通道；所有百分比增减基于基础值计算。
 
-`OutputSink` 现在仅记录预览快照，没有任何玩具写入路径。未来适配器单独处理 DG-LAB BLE、真实波形编码、速率和连接状态。上游控制数据是期望值，不能把它当作设备已确认值。界面内置 16 个参考自 `BobH233/DG-Lab-Coyote-Game-Hub` 的脉冲预设，解析频率字节和强度字节后绘制柱形；原始帧保留在 `Waveform.pulseData` 中供后续适配器使用，目前仍不会下发。
+`OutputSink` 现在分流到本地预览和 `CoyoteController`。Coyote 适配器扫描名称前缀 `47` 的设备，使用 `180C/150A/150B` 服务，把 `OutputFrame` 转换为每 100ms 一包的 A/B 强度与两路原始脉冲帧。Android 连接后请求 64 字节 MTU，满足 Coyote 3 的 21 字节控制包。上游控制数据是期望值；界面单独显示设备通过 `B1` 通知回报的强度。停用通道、全部停止、输入失联、后台、编辑和设备断开都会停止本地下发循环，主动停止或断开时优先写入空白脉冲与零强度。
 
 详细注册函数、事件、字段、命令、冲突规则、执行上限和示例见 [脚本 API](script-api.md)。
 
@@ -121,4 +125,4 @@ flowchart LR
 
 输入层保留归一化、设备隔离、首次回中、断流和生命周期测试。控制层使用真正的 QuickJS 执行全部内置脚本，验证百分比、负增量、多绑定叠加、通道锁定、阈值滞回、波形选择、摇杆加速、故障复位与脚本资源限制。界面覆盖手机窄屏、桌面与文字缩放。
 
-Apple 平台已做 macOS 和 arm64 iOS 模拟器构建。Android 原生源代码仍待具备 SDK/JDK 的环境编译和真机验证；iOS 手柄与脚本导入需真机验证。既有手柄监测由用户实按确认，新控制行为由自动测试和本地预览验证，不等于真实设备输出验证。
+Apple 平台已做 macOS 和 arm64 iOS 模拟器构建。Android 原生源代码仍待具备 SDK/JDK 的环境编译和真机验证；iOS 手柄、脚本导入与 Coyote BLE 需真机验证。既有手柄监测由用户实按确认；Coyote 包编码有自动测试，但实体输出仍需安全实机验收。

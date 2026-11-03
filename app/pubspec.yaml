@@ -16,6 +16,7 @@ dependencies:
     path: ../packages/gamepad_core
   gamepad_bridge:
     path: ../packages/gamepad_bridge
+  flutter_reactive_ble: ^5.4.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

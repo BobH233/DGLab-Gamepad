@@ -153,6 +153,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "0.9.3+6"
+  fixnum:
+    dependency: transitive
+    description:
+      name: fixnum
+      sha256: b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.1.1"
   flutter:
     dependency: transitive
     description: flutter
@@ -166,6 +174,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "6.0.0"
+  flutter_reactive_ble:
+    dependency: transitive
+    description:
+      name: flutter_reactive_ble
+      sha256: "10022aed17fa1797678a4d848cf25484a4cfd10c46061ce61687f071585fe036"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "5.4.2"
   flutter_test:
     dependency: transitive
     description: flutter
@@ -176,6 +192,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  functional_data:
+    dependency: transitive
+    description:
+      name: functional_data
+      sha256: "76d17dc707c40e552014f5a49c0afcc3f1e3f05e800cd6b7872940bfe41a5039"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "1.2.0"
   hooks:
     dependency: transitive
     description:
@@ -376,6 +400,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "2.1.8"
+  protobuf:
+    dependency: transitive
+    description:
+      name: protobuf
+      sha256: "13b6717366aa7ec3792dd62c19c7d33a785708224365f2db23c5ca01f1c1a0f2"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "6.1.0"
   pub_semver:
     dependency: transitive
     description:
@@ -391,6 +423,22 @@ packages:
       relative: true
     source: path
     version: "0.1.6"
+  reactive_ble_mobile:
+    dependency: transitive
+    description:
+      name: reactive_ble_mobile
+      sha256: ddfc324be406cec06aeace0e85a074cda8d0c01658ef6e5d308764fee4b33b61
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "5.4.2"
+  reactive_ble_platform_interface:
+    dependency: transitive
+    description:
+      name: reactive_ble_platform_interface
+      sha256: b5c81a30be81b351c8e86b9520a1a9f267c5fcf0b51a2eee9139da404a18ed79
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "5.6.0"
   record_use:
     dependency: transitive
     description:

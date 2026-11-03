@@ -5,6 +5,7 @@ import '../../control/models.dart';
 import '../palette.dart';
 import '../monitor_screen.dart';
 import 'bindings_page.dart';
+import 'coyote_sheet.dart';
 import 'scripts_page.dart';
 import 'waveform_view.dart';
 
@@ -161,83 +162,85 @@ class _ControlHomeState extends State<ControlHome> {
     ),
   );
 
-  Widget _dashboard(BuildContext context) => SingleChildScrollView(
+  Widget _dashboard(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-    child: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1200),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _connection(),
-            const SizedBox(height: 22),
-            LayoutBuilder(
-              builder: (context, c) {
-                final panels = [for (final id in channelIds) _channel(id)];
-                return c.maxWidth < 600
-                    ? Column(
-                        children: [
-                          panels[0],
-                          const SizedBox(height: 14),
-                          panels[1],
-                        ],
-                      )
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: panels[0]),
-                          const SizedBox(width: 18),
-                          Expanded(child: panels[1]),
-                        ],
-                      );
-              },
-            ),
-            const SizedBox(height: 28),
-            LayoutBuilder(
-              builder: (context, c) => _waveforms(
-                c.maxWidth < 600
-                    ? 2
-                    : c.maxWidth < 900
-                    ? 3
-                    : 4,
+    children: [
+      Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _connection(),
+              const SizedBox(height: 22),
+              LayoutBuilder(
+                builder: (context, c) {
+                  final panels = [for (final id in channelIds) _channel(id)];
+                  return c.maxWidth < 600
+                      ? Column(
+                          children: [
+                            panels[0],
+                            const SizedBox(height: 14),
+                            panels[1],
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: panels[0]),
+                            const SizedBox(width: 18),
+                            Expanded(child: panels[1]),
+                          ],
+                        );
+                },
               ),
-            ),
-            if (desk.engine.errors.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              for (final entry in desk.engine.errors.entries)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Palette.yellow),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Palette.yellow,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '绑定 ${entry.key} 已停用：${entry.value}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => navigate(1),
-                        child: const Text('检查'),
-                      ),
-                    ],
-                  ),
+              const SizedBox(height: 28),
+              LayoutBuilder(
+                builder: (context, c) => _waveforms(
+                  c.maxWidth < 600
+                      ? 2
+                      : c.maxWidth < 900
+                      ? 3
+                      : 4,
                 ),
+              ),
+              if (desk.engine.errors.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                for (final entry in desk.engine.errors.entries)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Palette.yellow),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Palette.yellow,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '绑定 ${entry.key} 已停用：${entry.value}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => navigate(1),
+                          child: const Text('检查'),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
-    ),
+    ],
   );
 
   Widget _connection() {
@@ -280,15 +283,40 @@ class _ControlHomeState extends State<ControlHome> {
             session.device!.name,
             style: const TextStyle(color: Palette.muted, fontSize: 12),
           ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: Palette.surface,
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: const Text(
-            '本地预览',
-            style: TextStyle(color: Palette.muted, fontSize: 11),
+        InkWell(
+          onTap: () => showCoyoteSheet(context, desk.coyote),
+          borderRadius: BorderRadius.circular(5),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: Palette.surface,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(
+                color: desk.coyote.connected ? Palette.yellow : Palette.line,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.bluetooth_rounded,
+                  size: 14,
+                  color: desk.coyote.connected ? Palette.yellow : Palette.muted,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  desk.coyote.connected
+                      ? '${desk.coyote.deviceName ?? '郊狼 3'} · ${desk.coyote.batteryLevel ?? '--'}%'
+                      : '连接郊狼',
+                  style: TextStyle(
+                    color: desk.coyote.connected
+                        ? Palette.yellow
+                        : Palette.muted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -498,73 +526,82 @@ class _ControlHomeState extends State<ControlHome> {
           ],
         ),
         const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: waveforms.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            mainAxisExtent: 115,
-          ),
-          itemBuilder: (context, i) {
-            final w = waveforms[i],
-                current = w.id == channel.waveform,
-                focused = i == channel.cursor;
-            return InkWell(
-              onTap: () => desk.chooseWaveform(i),
-              onFocusChange: (focus) {
-                if (focus) desk.focusWaveform(i);
-              },
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  color: current
-                      ? Palette.yellow.withValues(alpha: 0.08)
-                      : Palette.surface,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: focused ? Palette.yellow : Palette.line,
-                    width: focused ? 1.5 : 1,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 12.0;
+            final width =
+                (constraints.maxWidth - gap * (columns - 1)) / columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (var i = 0; i < waveforms.length; i++)
+                  SizedBox(
+                    width: width,
+                    height: 115,
+                    child: _waveformCard(i, channel),
                   ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            w.name,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: current ? Palette.yellow : Palette.text,
-                            ),
-                          ),
-                        ),
-                        if (current)
-                          const Icon(
-                            Icons.check_rounded,
-                            size: 15,
-                            color: Palette.yellow,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: WaveformView(waveform: w, active: current),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             );
           },
         ),
       ],
+    );
+  }
+
+  Widget _waveformCard(int i, ChannelState channel) {
+    final w = waveforms[i],
+        current = w.id == channel.waveform,
+        focused = i == channel.cursor;
+    return InkWell(
+      onTap: () => desk.chooseWaveform(i),
+      onFocusChange: (focus) {
+        if (focus) desk.focusWaveform(i);
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: current
+              ? Palette.yellow.withValues(alpha: 0.08)
+              : Palette.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: focused ? Palette.yellow : Palette.line,
+            width: focused ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    w.name,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: current ? Palette.yellow : Palette.text,
+                    ),
+                  ),
+                ),
+                if (current)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 15,
+                    color: Palette.yellow,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: SizedBox(
+                width: double.infinity,
+                child: WaveformView(waveform: w, active: current),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

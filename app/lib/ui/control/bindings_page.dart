@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../control/control_desk.dart';
 import '../../control/models.dart';
 import '../palette.dart';
+import 'coyote_sheet.dart';
 
 class BindingsPage extends StatelessWidget {
   final ControlDesk desk;
@@ -24,6 +25,16 @@ class BindingsPage extends StatelessWidget {
                   const Text(
                     '每个按键，由你定义',
                     style: TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => showCoyoteSheet(context, desk.coyote),
+                    icon: Icon(
+                      desk.coyote.connected
+                          ? Icons.bluetooth_connected_rounded
+                          : Icons.bluetooth_rounded,
+                      size: 18,
+                    ),
+                    label: Text(desk.coyote.connected ? '郊狼已连接' : '连接郊狼'),
                   ),
                   OutlinedButton.icon(
                     onPressed: desk.resetBindings,
