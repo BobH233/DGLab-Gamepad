@@ -63,12 +63,12 @@ xcodebuild -workspace Runner.xcworkspace -scheme Runner \
 
 ## 当前验证范围
 
-- 61 项测试：输入层、真实 JS 行为/资源限制、Coyote 3 包编码、动态触控频率与强度、九宫格映射、无触点静音、Y 键触控入口、绑定编辑、配置迁移/持久化、手机横竖屏与桌面布局通过。
+- 自动化测试：输入层、真实 JS 行为/资源限制、Coyote 3 包编码、动态触控频率与强度、九宫格映射、无触点静音、触控叠加、Y 键触控入口、通道参数、绑定编辑、配置迁移/持久化、手机横竖屏与桌面布局通过。
 - macOS：原生应用构建及控制台视觉检查通过。此前手柄监测实按由用户确认可用；本次控制台仍需用户完整实按验收。
 - iOS：arm64 模拟器构建通过，待真机验证。
 - Android：适配源代码已存在；当前机器缺少 SDK/JDK，尚未编译或真机验证。
 - 当前优先电脑端功能验收。手机横屏与进一步自适应调整，按用户要求留到下一阶段。
 
-16 个波形预设及其原始 DG-LAB 脉冲帧参考自 `BobH233/DG-Lab-Coyote-Game-Hub`，界面按帧频率与强度绘制脉冲柱形。`OutputSink` 同时更新本地预览与 Coyote BLE 适配器；控制包每 100ms 发送一次，App 进入后台、输入失联、编辑或停止时下发零强度。脚本源码、绑定、基础强度与波形保存在应用支持目录的 `control-profile-v1.json`；启停与临时加成不持久化。
+16 个波形预设及其原始 DG-LAB 脉冲帧参考自 `BobH233/DG-Lab-Coyote-Game-Hub`，界面按帧频率与强度绘制脉冲柱形。`OutputSink` 同时更新本地预览与 Coyote BLE 适配器；控制包每 100ms 发送一次，App 进入后台、输入失联、编辑或停止时下发零强度。脚本源码、绑定、基础强度、波形以及每路线性扳机/一键开火参数保存在应用支持目录的 `control-profile-v1.json`；启停与临时加成不持久化。
 
 详见 [架构](docs/architecture.md)、[触控面板](docs/touch-control.md)、[Coyote BLE](docs/coyote-ble.md)、[脚本 API](docs/script-api.md)、[第三方声明](docs/third-party-notices.md)、[已有手柄验证](docs/device-validation.md)。QuickJS 本地补丁和许可证保留于 `vendor/quickjs_engine`。

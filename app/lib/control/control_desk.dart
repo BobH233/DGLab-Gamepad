@@ -25,7 +25,10 @@ class ControlDesk extends ChangeNotifier {
   Timer? _touchNotifyTimer;
   String _savedChannelKey = '';
   String get _channelKey => engine.state.channels.values
-      .map((c) => '${c.base}:${c.waveform}')
+      .map(
+        (c) =>
+            '${c.base}:${c.waveform}:${c.linearAmount}:${c.linearUnit}:${c.boostAmount}',
+      )
       .join('|');
   String get _viewKey {
     final state = engine.state;
@@ -49,6 +52,9 @@ class ControlDesk extends ChangeNotifier {
           state.enabled(id),
           state.channels[id]!.waveform,
           state.channels[id]!.cursor,
+          state.channels[id]!.linearAmount,
+          state.channels[id]!.linearUnit,
+          state.channels[id]!.boostAmount,
           state.effective(id),
           state.offset(id),
         ].join(':'),
@@ -122,6 +128,10 @@ class ControlDesk extends ChangeNotifier {
               loadWarnings.add('脚本未载入：$e');
             }
           }
+          final savedVersion = switch (saved['version']) {
+            final num value => value.toInt(),
+            _ => 1,
+          };
           final restored = <Binding>[];
           for (final item in saved['bindings'] as List? ?? []) {
             try {
@@ -144,16 +154,24 @@ class ControlDesk extends ChangeNotifier {
                   )) {
                 throw const FormatException('绑定输入无效或重复');
               }
-              definition.validateConfig(binding.config);
-              restored.add(binding);
+              final config = definition.validateConfig(binding.config);
+              if (savedVersion < 4) {
+                _restoreLegacyControls(binding.action, binding.config);
+              }
+              restored.add(
+                Binding(
+                  id: binding.id,
+                  input: binding.input,
+                  action: binding.action,
+                  config: config,
+                  enabled: binding.enabled,
+                  threshold: binding.threshold,
+                ),
+              );
             } catch (e) {
               loadWarnings.add('绑定未载入：$e');
             }
           }
-          final savedVersion = switch (saved['version']) {
-            final num value => value.toInt(),
-            _ => 1,
-          };
           if (saved['autoScrollToAction'] case final bool value) {
             autoScrollToAction = value;
           }
@@ -182,6 +200,24 @@ class ControlDesk extends ChangeNotifier {
               engine.state.channels[id]!.cursor = waveforms.indexWhere(
                 (w) => w.id == wave,
               );
+            }
+            final linear = data?['linear'] as Map?;
+            final linearAmount = linear?['amount'];
+            if (linearAmount is num && linearAmount.isFinite) {
+              engine.state.channels[id]!.linearAmount = linearAmount
+                  .toDouble()
+                  .clamp(-200, 200);
+            }
+            final linearUnit = linear?['unit'];
+            if (linearUnit == 'absolute' || linearUnit == 'percent') {
+              engine.state.channels[id]!.linearUnit = linearUnit as String;
+            }
+            final boost = data?['boost'] as Map?;
+            final boostAmount = boost?['amount'];
+            if (boostAmount is num && boostAmount.isFinite) {
+              engine.state.channels[id]!.boostAmount = boostAmount
+                  .toDouble()
+                  .clamp(0, 200);
             }
           }
           final touch = saved['touch'] as Map?;
@@ -254,25 +290,25 @@ class ControlDesk extends ChangeNotifier {
       id: 'lt',
       input: 'leftTrigger',
       action: 'builtin.linear',
-      config: {'target': 'A', 'unit': 'absolute', 'amount': 30},
+      config: {'target': 'A'},
     ),
     const Binding(
       id: 'rt',
       input: 'rightTrigger',
       action: 'builtin.linear',
-      config: {'target': 'B', 'unit': 'absolute', 'amount': 30},
+      config: {'target': 'B'},
     ),
     const Binding(
       id: 'lb',
       input: 'leftShoulder',
       action: 'builtin.boost',
-      config: {'target': 'A', 'amount': 30, 'mode': 'hold'},
+      config: {'target': 'A', 'mode': 'hold'},
     ),
     const Binding(
       id: 'rb',
       input: 'rightShoulder',
       action: 'builtin.boost',
-      config: {'target': 'B', 'amount': 30, 'mode': 'hold'},
+      config: {'target': 'B', 'mode': 'hold'},
     ),
     const Binding(
       id: 'select',
@@ -323,7 +359,7 @@ class ControlDesk extends ChangeNotifier {
     final channelKey = _channelKey;
     try {
       await store?.save({
-        'version': 3,
+        'version': 4,
         'autoScrollToAction': autoScrollToAction,
         'bindings': bindings.map((b) => b.toJson()).toList(),
         'scripts': actions.values
@@ -331,7 +367,12 @@ class ControlDesk extends ChangeNotifier {
             .map((a) => a.source)
             .toList(),
         'channels': engine.state.channels.map(
-          (k, v) => MapEntry(k, {'base': v.base, 'waveform': v.waveform}),
+          (k, v) => MapEntry(k, {
+            'base': v.base,
+            'waveform': v.waveform,
+            'linear': {'amount': v.linearAmount, 'unit': v.linearUnit},
+            'boost': {'amount': v.boostAmount},
+          }),
         ),
         'touch': {
           'grid': engine.state.touchGrid,
@@ -371,6 +412,81 @@ class ControlDesk extends ChangeNotifier {
     engine.publish();
     _notify();
     if (persist) unawaited(save());
+  }
+
+  Future<void> setChannelControls(
+    String id, {
+    required double linearAmount,
+    required String linearUnit,
+    required double boostAmount,
+  }) async {
+    if (!channelIds.contains(id) ||
+        !linearAmount.isFinite ||
+        linearAmount < -200 ||
+        linearAmount > 200 ||
+        !['absolute', 'percent'].contains(linearUnit) ||
+        !boostAmount.isFinite ||
+        boostAmount < 0 ||
+        boostAmount > 200) {
+      throw ArgumentError('通道控制参数无效');
+    }
+    final previousLinear = engine.state.channels[id]!.linearAmount;
+    final activeActions = {
+      for (final binding in bindings) binding.id: binding.action,
+    };
+    for (final entry in engine.state.overlays.entries.toList()) {
+      final overlay = entry.value;
+      if (overlay['channel'] != id) continue;
+      final action = activeActions[entry.key];
+      if (action == 'builtin.boost') {
+        engine.state.overlays[entry.key] = Map.unmodifiable({
+          ...overlay,
+          'unit': 'absolute',
+          'value': boostAmount,
+        });
+      } else if (action == 'builtin.linear') {
+        final previousValue = overlay['value'];
+        final ratio = previousLinear.abs() > 0.000001 && previousValue is num
+            ? previousValue / previousLinear
+            : 0.0;
+        engine.state.overlays[entry.key] = Map.unmodifiable({
+          ...overlay,
+          'unit': linearUnit,
+          'value': (linearAmount * ratio).clamp(-200, 200),
+        });
+      }
+    }
+    engine.state.channels[id]!
+      ..linearAmount = linearAmount
+      ..linearUnit = linearUnit
+      ..boostAmount = boostAmount;
+    engine.publish();
+    _notify();
+    await save();
+  }
+
+  void _restoreLegacyControls(String action, Map<String, dynamic> config) {
+    final target = config['target'];
+    final targets = target == 'selected'
+        ? channelIds
+        : channelIds.contains(target)
+        ? [target as String]
+        : const <String>[];
+    if (targets.isEmpty) return;
+    final amount = config['amount'];
+    if (amount is! num || !amount.isFinite) return;
+    final unit = config['unit'];
+    for (final id in targets) {
+      final channel = engine.state.channels[id]!;
+      if (action == 'builtin.linear') {
+        channel.linearAmount = amount.toDouble().clamp(-200, 200);
+        if (unit == 'absolute' || unit == 'percent') {
+          channel.linearUnit = unit as String;
+        }
+      } else if (action == 'builtin.boost') {
+        channel.boostAmount = amount.toDouble().clamp(0, 200);
+      }
+    }
   }
 
   void toggle(String id) {

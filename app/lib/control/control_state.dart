@@ -76,7 +76,7 @@ class ControlState {
     return mapTouchPoint(
       x: point.x,
       y: point.y,
-      intensityCeiling: channels[channel]!.base,
+      intensityCeiling: effective(channel),
       horizontalSplitA: horizontal[0],
       horizontalSplitB: horizontal[1],
       verticalSplitA: vertical[0],

@@ -8,6 +8,7 @@ import '../../control/models.dart';
 import '../palette.dart';
 import '../monitor_screen.dart';
 import 'bindings_page.dart';
+import 'channel_controls_dialog.dart';
 import 'coyote_sheet.dart';
 import 'scripts_page.dart';
 import 'touch_panel.dart';
@@ -638,13 +639,48 @@ class _ControlHomeState extends State<ControlHome> {
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    '临时 ${offset >= 0 ? '+' : ''}${offset.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: offset.abs() > 0.1
-                          ? Palette.yellow
-                          : Palette.muted,
+                  Tooltip(
+                    message: '编辑 $id 通道控制参数',
+                    child: InkWell(
+                      onTap: () => showChannelControlsDialog(context, desk, id),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Palette.raised,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: offset.abs() > 0.1
+                                ? Palette.yellow
+                                : Palette.line,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 14,
+                              color: offset.abs() > 0.1
+                                  ? Palette.yellow
+                                  : Palette.muted,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '临时 ${offset >= 0 ? '+' : ''}${offset.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: offset.abs() > 0.1
+                                    ? Palette.yellow
+                                    : Palette.muted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],

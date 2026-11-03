@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gamepad_core/gamepad_core.dart';
 import 'package:dglab_gamepad/coyote/coyote_controller.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
 import 'package:dglab_gamepad/control/control_desk.dart';
@@ -155,7 +156,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('LT · 操作绑定'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.enterText(find.byType(TextFormField).first, '50');
+      expect(find.text('满行程增减量'), findsNothing);
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byType(DropdownButtonFormField<String>).at(1),
+          )
+          .onChanged!('B');
+      await tester.pump();
       await tester.tap(find.text('保存'));
       await tester.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -164,30 +171,30 @@ void main() {
       expect(
         desk.bindings
             .firstWhere((b) => b.input == 'leftTrigger')
-            .config['amount'],
-        50,
+            .config['target'],
+        'B',
       );
       final saved = await storage.read();
       expect(
         (saved!['bindings'] as List)
             .where((b) => b['input'] == 'leftTrigger')
-            .first['config']['amount'],
-        50,
+            .first['config']['target'],
+        'B',
       );
       await tester.tap(find.text('恢复默认'));
       await tester.pump();
       expect(
         desk.bindings
             .firstWhere((b) => b.input == 'leftTrigger')
-            .config['amount'],
-        30,
+            .config['target'],
+        'A',
       );
       final resetSaved = await storage.read();
       expect(
         (resetSaved!['bindings'] as List)
             .where((b) => b['input'] == 'leftTrigger')
-            .first['config']['amount'],
-        30,
+            .first['config']['target'],
+        'A',
       );
       await tester.tap(find.text('操作脚本').last);
       await tester.pump();
@@ -201,6 +208,116 @@ void main() {
       });
     });
   }
+
+  testWidgets('temporary label edits independent channel controls', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final storage = _MemoryStore();
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: storage, assets: _LocalAssets());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Palette.background,
+          colorScheme: const ColorScheme.dark(
+            primary: Palette.yellow,
+            surface: Palette.surface,
+          ),
+        ),
+        home: ControlHome(desk: desk),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('编辑 A 通道控制参数'));
+    await tester.pumpAndSettle();
+    expect(find.text('A 通道控制参数'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('linear-unit-A')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('基础强度百分比').last);
+    await tester.enterText(find.byKey(const ValueKey('linear-amount-A')), '80');
+    await tester.enterText(find.byKey(const ValueKey('boost-amount-A')), '45');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(desk.engine.state.channels['A']!.linearAmount, 80);
+    expect(desk.engine.state.channels['A']!.linearUnit, 'percent');
+    expect(desk.engine.state.channels['A']!.boostAmount, 45);
+
+    await tester.ensureVisible(find.byTooltip('编辑 B 通道控制参数'));
+    await tester.tap(find.byTooltip('编辑 B 通道控制参数'));
+    await tester.pumpAndSettle();
+    expect(find.text('B 通道控制参数'), findsOneWidget);
+    expect(desk.engine.state.selected, 'A');
+    await tester.enterText(
+      find.byKey(const ValueKey('linear-amount-B')),
+      '-25',
+    );
+    await tester.enterText(find.byKey(const ValueKey('boost-amount-B')), '15');
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(desk.engine.state.channels['A']!.linearAmount, 80);
+    expect(desk.engine.state.channels['A']!.linearUnit, 'percent');
+    expect(desk.engine.state.channels['A']!.boostAmount, 45);
+    expect(desk.engine.state.channels['B']!.linearAmount, -25);
+    expect(desk.engine.state.channels['B']!.linearUnit, 'absolute');
+    expect(desk.engine.state.channels['B']!.boostAmount, 15);
+
+    await tester.pumpWidget(const SizedBox());
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
+
+  test('active touch effects refresh when channel controls change', () async {
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    desk.engine.state.channels['A']!.base = 90;
+    await desk.setChannelControls(
+      'A',
+      linearAmount: 60,
+      linearUnit: 'absolute',
+      boostAmount: 40,
+    );
+    desk.engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A'
+      ..beginScreenTouch(0.5, 0.5);
+    desk.engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
+    desk.engine.input(
+      GamepadState({Control.leftTrigger: 0.5, Control.leftShoulder: 1}),
+      live: true,
+      deviceId: 'pad',
+    );
+    expect(desk.engine.state.touchReadout('A')!.intensity, 160);
+
+    await desk.setChannelControls(
+      'A',
+      linearAmount: 50,
+      linearUnit: 'percent',
+      boostAmount: 20,
+    );
+    expect(desk.engine.state.touchReadout('A')!.intensity, 132.5);
+
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+  });
 
   testWidgets('Touch movement refreshes the preview at 30 FPS', (tester) async {
     final stream = StreamController<Map<String, dynamic>>();

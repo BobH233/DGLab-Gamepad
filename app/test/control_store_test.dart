@@ -54,13 +54,28 @@ void main() {
         desk.setTouchBalance('A', 0.8);
         desk.setTouchHorizontalSplits('A', 0.25, 0.7);
         desk.setTouchVerticalSplits('A', 0.3, 0.75);
+        await desk.setChannelControls(
+          'A',
+          linearAmount: 75,
+          linearUnit: 'percent',
+          boostAmount: 45,
+        );
+        await desk.setChannelControls(
+          'B',
+          linearAmount: -20,
+          linearUnit: 'absolute',
+          boostAmount: 15,
+        );
         monitor.didChangeAppLifecycleState(AppLifecycleState.inactive);
         expect(desk.engine.state.enabled('A'), isFalse);
         await Future<void>.delayed(const Duration(milliseconds: 750));
         final saved = await store.read();
-        expect(saved!['version'], 3);
+        expect(saved!['version'], 4);
         expect(saved['autoScrollToAction'], isFalse);
         expect(saved['channels']['A']['base'], 5);
+        expect(saved['channels']['A']['linear']['amount'], 75);
+        expect(saved['channels']['A']['linear']['unit'], 'percent');
+        expect(saved['channels']['A']['boost']['amount'], 45);
         expect(saved['channels']['A'].containsKey('enabled'), isFalse);
         await restored.initialize(storage: store, assets: _Assets());
         expect(restored.ready, isTrue, reason: restored.error);
@@ -73,6 +88,12 @@ void main() {
         expect(restored.engine.state.touchHorizontalSplits['A'], [0.25, 0.7]);
         expect(restored.engine.state.touchVerticalSplits['A'], [0.3, 0.75]);
         expect(restored.autoScrollToAction, isFalse);
+        expect(restored.engine.state.channels['A']!.linearAmount, 75);
+        expect(restored.engine.state.channels['A']!.linearUnit, 'percent');
+        expect(restored.engine.state.channels['A']!.boostAmount, 45);
+        expect(restored.engine.state.channels['B']!.linearAmount, -20);
+        expect(restored.engine.state.channels['B']!.linearUnit, 'absolute');
+        expect(restored.engine.state.channels['B']!.boostAmount, 15);
       } finally {
         desk.dispose();
         restored.dispose();
@@ -126,7 +147,63 @@ void main() {
       expect(desk.ready, isTrue, reason: desk.error);
       final touch = desk.bindings.singleWhere((b) => b.input == 'north');
       expect(touch.action, 'builtin.toggleTouch');
-      expect((await store.read())!['version'], 3);
+      expect((await store.read())!['version'], 4);
+    } finally {
+      desk.dispose();
+      monitor.dispose();
+      await dir.delete(recursive: true);
+    }
+  });
+  test('version 3 binding amounts migrate into channel controls', () async {
+    final dir = Directory.systemTemp.createTempSync('dglab-tuning-migrate-');
+    final store = ControlStore(File('${dir.path}/profile.json'));
+    final linear =
+        ControlDesk.defaultBindings()
+            .firstWhere((binding) => binding.action == 'builtin.linear')
+            .toJson()
+          ..['config'] = {
+            'target': 'selected',
+            'unit': 'percent',
+            'amount': 55,
+          };
+    final boost =
+        ControlDesk.defaultBindings()
+            .firstWhere((binding) => binding.action == 'builtin.boost')
+            .toJson()
+          ..['config'] = {'target': 'selected', 'mode': 'hold', 'amount': 42};
+    await store.save({
+      'version': 3,
+      'bindings': [
+        linear,
+        boost,
+        {
+          ...linear,
+          'config': {'target': 'A', 'unit': 'absolute', 'amount': 199},
+        },
+      ],
+    });
+    final monitor = InputMonitor(
+      events: const Stream.empty(),
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor);
+    try {
+      await desk.initialize(storage: store, assets: _Assets());
+      expect(desk.engine.state.channels['A']!.linearAmount, 55);
+      expect(desk.engine.state.channels['A']!.linearUnit, 'percent');
+      expect(desk.engine.state.channels['A']!.boostAmount, 42);
+      expect(desk.engine.state.channels['B']!.linearAmount, 55);
+      expect(desk.engine.state.channels['B']!.linearUnit, 'percent');
+      expect(desk.engine.state.channels['B']!.boostAmount, 42);
+      expect(
+        desk.bindings.any((binding) => binding.config.containsKey('amount')),
+        isFalse,
+      );
+      await desk.save();
+      final saved = await store.read();
+      expect(saved!['version'], 4);
+      expect(saved['channels']['A']['linear']['amount'], 55);
+      expect(saved['channels']['A']['boost']['amount'], 42);
     } finally {
       desk.dispose();
       monitor.dispose();

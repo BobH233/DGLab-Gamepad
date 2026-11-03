@@ -48,6 +48,15 @@ void main() {
         action: 'builtin.$action',
         config: {...definitions['builtin.$action']!.defaults, ...config},
       );
+  void setLinear(String channel, double amount, [String unit = 'absolute']) {
+    engine.state.channels[channel]!
+      ..linearAmount = amount
+      ..linearUnit = unit;
+  }
+
+  void setBoost(String channel, double amount) {
+    engine.state.channels[channel]!.boostAmount = amount;
+  }
 
   test('DG-LAB presets decode pulse frequency and strength data', () {
     expect(waveforms, hasLength(16));
@@ -64,13 +73,10 @@ void main() {
     'real JS: base 80 plus 80% at full trigger is 144 and release is 80',
     () {
       configure([
-        binding('leftTrigger', 'linear', {
-          'target': 'A',
-          'unit': 'percent',
-          'amount': 80,
-        }),
+        binding('leftTrigger', 'linear', {'target': 'A'}),
       ]);
       engine.state.channels['A']!.base = 80;
+      setLinear('A', 80, 'percent');
       input({Control.leftTrigger: 1});
       expect(engine.state.effective('A'), 144);
       input({Control.leftTrigger: 0.5});
@@ -81,13 +87,10 @@ void main() {
   );
   test('negative 100% reaches zero; base does not change', () {
     configure([
-      binding('leftTrigger', 'linear', {
-        'target': 'A',
-        'unit': 'percent',
-        'amount': -100,
-      }),
+      binding('leftTrigger', 'linear', {'target': 'A'}),
     ]);
     engine.state.channels['A']!.base = 80;
+    setLinear('A', -100, 'percent');
     input({Control.leftTrigger: 1});
     expect(engine.state.effective('A'), 0);
     input({});
@@ -97,10 +100,12 @@ void main() {
     'two independent offsets stack, clamp, and release without corrupting base',
     () {
       configure([
-        binding('leftTrigger', 'linear', {'target': 'A', 'amount': 50}),
-        binding('leftShoulder', 'boost', {'target': 'A', 'amount': 40}),
+        binding('leftTrigger', 'linear', {'target': 'A'}),
+        binding('leftShoulder', 'boost', {'target': 'A'}),
       ]);
       engine.state.channels['A']!.base = 150;
+      setLinear('A', 50);
+      setBoost('A', 40);
       input({Control.leftTrigger: 0.5, Control.leftShoulder: 1});
       expect(engine.state.effective('A'), 200);
       input({Control.leftTrigger: 0.5});
@@ -111,9 +116,11 @@ void main() {
   );
   test('selected channel captured for the whole trigger gesture', () {
     configure([
-      binding('leftTrigger', 'linear', {'target': 'selected', 'amount': 30}),
+      binding('leftTrigger', 'linear', {'target': 'selected'}),
       binding('view', 'select', {'channel': 'toggle'}),
     ]);
+    setLinear('A', 30);
+    setLinear('B', 30);
     input({Control.leftTrigger: 0.5});
     expect(engine.state.offset('A'), 15);
     input({Control.leftTrigger: 0.5, Control.view: 1});
@@ -131,10 +138,10 @@ void main() {
       configure([
         binding('leftShoulder', 'boost', {
           'target': 'selected',
-          'amount': 30,
           'mode': 'toggle',
         }),
       ]);
+      setBoost('A', 30);
       input({Control.leftShoulder: 1});
       input({});
       engine.state.selected = 'B';
@@ -295,8 +302,9 @@ void main() {
     'disconnect clears temporary output and stops channels but retains base',
     () {
       configure([
-        binding('leftShoulder', 'boost', {'amount': 30, 'mode': 'toggle'}),
+        binding('leftShoulder', 'boost', {'mode': 'toggle'}),
       ]);
+      setBoost('A', 30);
       engine.state.channels['A']!
         ..base = 80
         ..enabled = true;
@@ -307,6 +315,30 @@ void main() {
       expect(engine.state.frame().channels['A']!['intensity'], 0);
     },
   );
+  test('touch output includes linear trigger and boost overlays', () {
+    configure([
+      binding('leftTrigger', 'linear', {'target': 'A'}),
+      binding('leftShoulder', 'boost', {'target': 'A', 'mode': 'hold'}),
+    ]);
+    engine.state.channels['A']!.base = 90;
+    setLinear('A', 60);
+    setBoost('A', 30);
+    engine.state
+      ..touchMode = true
+      ..touchSurfaceVisible = true
+      ..touchChannel = 'A'
+      ..beginScreenTouch(0.5, 0.5);
+
+    input({Control.leftTrigger: 1, Control.leftShoulder: 1});
+    expect(engine.state.touchReadout('A')!.intensity, 180);
+    expect(engine.state.frame().channels['A']!['intensity'], 180);
+
+    input({Control.leftShoulder: 1});
+    expect(engine.state.touchReadout('A')!.intensity, 120);
+
+    input({});
+    expect(engine.state.touchReadout('A')!.intensity, 90);
+  });
   test('invalid command batch is atomic', () {
     final state = ControlState();
     expect(

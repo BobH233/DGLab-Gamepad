@@ -4,29 +4,43 @@ export 'waveforms.dart';
 export 'touch_control.dart';
 
 const channelIds = ['A', 'B'];
+const defaultLinearAmount = 30.0;
+const defaultLinearUnit = 'absolute';
+const defaultBoostAmount = 30.0;
 
 class ChannelState {
   double base;
   bool enabled;
   String waveform;
   int cursor;
+  double linearAmount;
+  String linearUnit;
+  double boostAmount;
   ChannelState({
     this.base = 0,
     this.enabled = false,
     this.waveform = defaultWaveformId,
     this.cursor = 0,
+    this.linearAmount = defaultLinearAmount,
+    this.linearUnit = defaultLinearUnit,
+    this.boostAmount = defaultBoostAmount,
   });
   ChannelState copy() => ChannelState(
     base: base,
     enabled: enabled,
     waveform: waveform,
     cursor: cursor,
+    linearAmount: linearAmount,
+    linearUnit: linearUnit,
+    boostAmount: boostAmount,
   );
   Map<String, dynamic> toJson() => {
     'base': base,
     'enabled': enabled,
     'waveform': waveform,
     'cursor': cursor,
+    'linear': {'amount': linearAmount, 'unit': linearUnit},
+    'boost': {'amount': boostAmount},
   };
 }
 
