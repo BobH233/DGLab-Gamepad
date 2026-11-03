@@ -539,10 +539,6 @@ class _ControlHomeState extends State<ControlHome> {
               '$selected 通道',
               style: const TextStyle(color: Palette.yellow, fontSize: 12),
             ),
-            TextButton(
-              onPressed: () => desk.chooseWaveform(channel.cursor),
-              child: const Text('应用选中'),
-            ),
           ],
         ),
         const SizedBox(height: 12),
