@@ -11,6 +11,8 @@ const _mono = TextStyle(
   fontFamily: 'Menlo',
   fontFeatures: [FontFeature.tabularFigures()],
 );
+const _particleLifetimeMs = 720;
+const _particleMaxRadius = 3.6;
 
 Future<void> showTouchPanelDialog(
   BuildContext context,
@@ -175,7 +177,9 @@ class _TouchSurfaceState extends State<_TouchSurface>
   void _tick(Duration elapsed) {
     if (!mounted) return;
     _clockMs = _tickerBaseMs + elapsed.inMilliseconds;
-    particles.removeWhere((particle) => _clockMs >= particle.expiresAt);
+    particles.removeWhere(
+      (particle) => _clockMs - particle.bornAt >= _particleLifetimeMs,
+    );
     if (_pointer == null && particles.isEmpty) {
       _ticker.stop();
     }
@@ -237,9 +241,7 @@ class _TouchSurfaceState extends State<_TouchSurface>
               size.height,
             ),
           ),
-          radius: 1.4 + _random.nextDouble() * 2.8,
           bornAt: now,
-          expiresAt: now + 420 + _random.nextInt(420),
         ),
       );
     }
@@ -512,16 +514,9 @@ class _IntensityMapping extends StatelessWidget {
 
 class _Particle {
   final Offset position;
-  final double radius;
   final int bornAt;
-  final int expiresAt;
 
-  const _Particle({
-    required this.position,
-    required this.radius,
-    required this.bornAt,
-    required this.expiresAt,
-  });
+  const _Particle({required this.position, required this.bornAt});
 }
 
 class _TouchPainter extends CustomPainter {
@@ -551,18 +546,19 @@ class _TouchPainter extends CustomPainter {
       }
     }
     for (final particle in particles) {
-      final age =
-          ((now - particle.bornAt) /
-                  math.max(1, particle.expiresAt - particle.bornAt))
-              .clamp(0.0, 1.0);
+      final age = ((now - particle.bornAt) / _particleLifetimeMs).clamp(
+        0.0,
+        1.0,
+      );
+      final radius = _particleMaxRadius * (1 - age);
       final opacity = math.pow(1 - age, 1.6).toDouble();
       final glow = Paint()
         ..color = Palette.yellow.withValues(alpha: opacity * 0.16)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7);
-      canvas.drawCircle(particle.position, particle.radius * 2.8, glow);
+      canvas.drawCircle(particle.position, radius * 2.8, glow);
       canvas.drawCircle(
         particle.position,
-        particle.radius,
+        radius,
         Paint()..color = Palette.yellow.withValues(alpha: opacity),
       );
     }
