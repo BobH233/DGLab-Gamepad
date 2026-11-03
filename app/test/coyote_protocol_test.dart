@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dglab_gamepad/control/models.dart';
 import 'package:dglab_gamepad/control/output_waveform_trace.dart';
@@ -46,6 +48,25 @@ void main() {
     expect(changedA[3], 120);
   });
 
+  test('inactive channels reset to the first waveform frame', () {
+    final encoder = CoyotePacketEncoder();
+    final active = OutputFrame(1, {
+      'A': {'enabled': true, 'intensity': 80, 'waveformId': waveforms[0].id},
+      'B': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[1].id},
+    });
+    final inactive = OutputFrame(2, {
+      'A': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[0].id},
+      'B': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[1].id},
+    });
+
+    final first = encoder.encode(active, forceStrength: true);
+    final stopped = encoder.encode(inactive);
+    final restarted = encoder.encode(active);
+
+    expect(stopped.sublist(4, 12), [10, 10, 10, 10, 0, 0, 0, 0]);
+    expect(restarted.sublist(4, 12), first.sublist(4, 12));
+  });
+
   test('deferred strength change keeps waveform stream alive', () {
     final encoder = CoyotePacketEncoder();
     final first = encoder.encode(frame(a: 80, b: 120), forceStrength: true);
@@ -89,53 +110,129 @@ void main() {
   });
 
   test('dynamic touch frame overrides preset frequency and pulse width', () {
-    final packet = CoyotePacketEncoder().encode(
-      OutputFrame(1, {
-        'A': {
-          'intensity': 90,
-          'enabled': true,
-          'waveformId': waveforms.first.id,
-          'frequencyMs': 10,
-          'waveformIntensity': 100,
-        },
-        'B': {'intensity': 0, 'enabled': false, 'waveformId': waveforms[1].id},
-      }),
-      forceStrength: true,
-    );
+    Uint8List encode(double frequencyMs) {
+      return CoyotePacketEncoder().encode(
+        OutputFrame(1, {
+          'A': {
+            'intensity': 90,
+            'enabled': true,
+            'waveformId': waveforms.first.id,
+            'frequencyMs': frequencyMs,
+            'waveformIntensity': 100,
+          },
+          'B': {
+            'intensity': 0,
+            'enabled': false,
+            'waveformId': waveforms[1].id,
+          },
+        }),
+        forceStrength: true,
+      );
+    }
 
-    expect(packet.sublist(4, 8), everyElement(10));
-    expect(packet.sublist(8, 12), everyElement(100));
+    final highFrequency = encode(10);
+    final lowFrequency = encode(100);
+    expect(highFrequency.sublist(4, 8), everyElement(10));
+    expect(highFrequency.sublist(8, 12), everyElement(100));
+    expect(lowFrequency.sublist(4, 8), everyElement(100));
+    expect(lowFrequency.sublist(8, 12), everyElement(100));
   });
 
-  test('live waveform trace follows core output without a BLE connection', () {
-    final trace = OutputWaveformTrace();
-    trace.accept(
-      OutputFrame(1, {
-        'A': {'enabled': true, 'intensity': 80, 'waveformId': waveforms[0].id},
-        'B': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[1].id},
-      }),
-    );
+  test('output pulse sequencer restarts deterministically', () {
+    final sequencer = OutputPulseSequencer();
+    final first = OutputFrame(1, {
+      'A': {'enabled': true, 'waveformId': waveforms[0].id},
+      'B': {'enabled': true, 'waveformId': waveforms[1].id},
+    });
+    final other = OutputFrame(2, {
+      'A': {'enabled': true, 'waveformId': waveforms[2].id},
+      'B': {'enabled': true, 'waveformId': waveforms[1].id},
+    });
 
-    final samples = trace.samplesFor('A');
-    expect(samples, hasLength(4));
-    expect(samples.map((item) => item.sample.frequency), [
-      for (final sample in waveforms[0].samples.take(4)) sample.frequency,
+    final initial = sequencer.next(first, 'A').samples;
+    final initialValues = initial
+        .map((sample) => [sample.frequency, sample.strength])
+        .toList();
+    expect(initialValues, [
+      for (final sample in waveforms[0].samples.take(4))
+        [sample.frequency, sample.strength],
     ]);
-    expect(samples.map((item) => item.sample.strength), [
-      for (final sample in waveforms[0].samples.take(4)) sample.strength,
-    ]);
-    expect(trace.samplesFor('B'), isEmpty);
-    expect(samples.last.seconds, greaterThan(samples.first.seconds));
-
-    trace.accept(
-      OutputFrame(2, {
-        'A': {'enabled': false},
-        'B': {'enabled': false},
-      }),
+    sequencer.reset();
+    expect(
+      sequencer
+          .next(first, 'A')
+          .samples
+          .map((sample) => [sample.frequency, sample.strength]),
+      initialValues,
     );
-    expect(trace.samplesFor('A'), isEmpty);
-    trace.dispose();
+    sequencer.next(other, 'A');
+    expect(
+      sequencer
+          .next(first, 'A')
+          .samples
+          .map((sample) => [sample.frequency, sample.strength]),
+      initialValues,
+    );
   });
+
+  test('the same waveform cycle repeats without drift', () {
+    final sequencer = OutputPulseSequencer();
+    final source = OutputFrame(1, {
+      'A': {'enabled': true, 'intensity': 136, 'waveformId': waveforms[2].id},
+      'B': {'enabled': false},
+    });
+    final cycleLength = waveforms[2].pulseData.length;
+    final cycle = [
+      for (var i = 0; i < cycleLength; i++) sequencer.next(source, 'A').bytes,
+    ];
+    final repeated = [
+      for (var i = 0; i < cycleLength; i++) sequencer.next(source, 'A').bytes,
+    ];
+    expect(repeated, cycle);
+  });
+
+  test(
+    'live waveform trace follows core output without a BLE connection',
+    () async {
+      final trace = OutputWaveformTrace();
+      trace.accept(
+        OutputFrame(1, {
+          'A': {
+            'enabled': true,
+            'intensity': 80,
+            'waveformId': waveforms[0].id,
+          },
+          'B': {
+            'enabled': false,
+            'intensity': 0,
+            'waveformId': waveforms[1].id,
+          },
+        }),
+      );
+
+      await Future<void>.delayed(
+        OutputWaveformTrace.sampleInterval + const Duration(milliseconds: 20),
+      );
+      final samples = trace.samplesFor('A');
+      expect(samples, hasLength(4));
+      expect(samples.map((item) => item.frequency), [
+        for (final sample in waveforms[0].samples.take(4)) sample.frequency,
+      ]);
+      expect(samples.map((item) => item.strength), [
+        for (final sample in waveforms[0].samples.take(4)) sample.strength,
+      ]);
+      expect(trace.samplesFor('B'), isEmpty);
+
+      trace.accept(
+        OutputFrame(2, {
+          'A': {'enabled': false},
+          'B': {'enabled': false},
+        }),
+      );
+      expect(trace.samplesFor('A'), isEmpty);
+      trace.dispose();
+    },
+  );
 
   test(
     'balance packet preserves soft limits and writes both balance pairs',

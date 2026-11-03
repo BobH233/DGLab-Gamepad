@@ -28,6 +28,8 @@ B0  sequence/flags  strengthA  strengthB  pulseA[8]  pulseB[8]
 
 The device reports `B1` notifications. Bytes 2 and 3 update the displayed device strength for channels A and B. After a strength-changing B0 packet, waveform packets continue at 100ms while only further strength changes wait for the matching sequence or a 700ms timeout.
 
+The 100ms cadence is a protocol target, not a hard realtime guarantee from iOS, Android or the BLE stack. Writes are serialized and overlapping packets are skipped instead of being burst later; a delayed platform timer therefore must not cause a catch-up burst of intensity changes.
+
 Touch balance uses `BF` packets with soft limits left unchanged (`201, 201`), the frequency balance written for A/B, and both pulse-width balance bytes set to `0`.
 
 ## Safety

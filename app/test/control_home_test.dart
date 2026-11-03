@@ -134,6 +134,7 @@ void main() {
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isTrue);
       expect(coyote.connected, isFalse);
+      await tester.pump(const Duration(milliseconds: 120));
       expect(desk.waveformTrace.samplesFor('A'), isNotEmpty);
       await tester.tap(
         find.text('全部停止').evaluate().isEmpty

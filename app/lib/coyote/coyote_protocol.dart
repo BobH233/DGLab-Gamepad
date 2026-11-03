@@ -31,11 +31,11 @@ class CoyotePacketEncoder {
       if (forceStrength || strengthB != _sentStrengthB) changed |= 0x3;
     }
 
-    final pulseA = silence
-        ? _decodePulse(_blankPulse)
+    final pulseA = silence || frame?.channels['A']?['enabled'] != true
+        ? _blankAndReset('A')
         : _pulses.next(frame, 'A').bytes;
-    final pulseB = silence
-        ? _decodePulse(_blankPulse)
+    final pulseB = silence || frame?.channels['B']?['enabled'] != true
+        ? _blankAndReset('B')
         : _pulses.next(frame, 'B').bytes;
 
     final packet = Uint8List(20);
@@ -60,6 +60,11 @@ class CoyotePacketEncoder {
   int _strength(OutputFrame? frame, String channel) {
     final value = frame?.channels[channel]?['intensity'];
     return ((value as num?)?.round() ?? 0).clamp(0, 200);
+  }
+
+  List<int> _blankAndReset(String channel) {
+    _pulses.resetChannel(channel);
+    return _decodePulse(_blankPulse);
   }
 
   List<int> _decodePulse(String value) => [

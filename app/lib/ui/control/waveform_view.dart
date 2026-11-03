@@ -65,35 +65,42 @@ class LiveWaveformView extends StatefulWidget {
 
 class _LiveWaveformViewState extends State<LiveWaveformView>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ticker;
+  late final AnimationController _scroll;
 
   @override
   void initState() {
     super.initState();
-    _ticker = AnimationController(
+    _scroll = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 1),
+      duration: OutputWaveformTrace.sampleInterval,
+      value: 1,
     );
-    _syncTicker();
+    widget.trace.addListener(_handleTrace);
   }
 
   @override
   void didUpdateWidget(covariant LiveWaveformView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.active != widget.active) _syncTicker();
+    if (oldWidget.trace != widget.trace) {
+      oldWidget.trace.removeListener(_handleTrace);
+      widget.trace.addListener(_handleTrace);
+    }
+    if (!widget.active) {
+      _scroll.stop();
+    } else if (!oldWidget.active) {
+      _scroll.value = 1;
+    }
   }
 
-  void _syncTicker() {
-    if (widget.active) {
-      _ticker.repeat();
-    } else {
-      _ticker.stop();
-    }
+  void _handleTrace() {
+    if (!mounted || !widget.active) return;
+    _scroll.forward(from: 0);
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    widget.trace.removeListener(_handleTrace);
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -107,26 +114,26 @@ class _LiveWaveformViewState extends State<LiveWaveformView>
         waveform: widget.waveform,
         channel: widget.channel,
         trace: widget.trace,
-        repaint: Listenable.merge([_ticker, widget.trace]),
+        scroll: _scroll,
+        repaint: Listenable.merge([_scroll, widget.trace]),
       ),
     );
   }
 }
 
 class _LivePulsePainter extends CustomPainter {
-  static const _sampleSpacing = 2.5;
-  static final _scrollSpeed =
-      _sampleSpacing /
-      (OutputWaveformTrace.sampleInterval.inMilliseconds / 4000);
+  static const _sampleSpacing = 5.0;
 
   final Waveform waveform;
   final String channel;
   final OutputWaveformTrace trace;
+  final Animation<double> scroll;
 
   _LivePulsePainter({
     required this.waveform,
     required this.channel,
     required this.trace,
+    required this.scroll,
     required Listenable repaint,
   }) : super(repaint: repaint);
 
@@ -141,20 +148,23 @@ class _LivePulsePainter extends CustomPainter {
 
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    final now = trace.nowSeconds;
-    for (final timed in samples) {
+    final entering = samples.length > 4
+        ? (1 - scroll.value) * 4 * _sampleSpacing
+        : 0.0;
+    for (var i = 0; i < samples.length; i++) {
       final x =
-          size.width - (now - timed.seconds) * _scrollSpeed - _sampleSpacing;
+          size.width - (samples.length - 1 - i) * _sampleSpacing + entering;
       if (x < -_sampleSpacing || x > size.width) continue;
-      final age = now - timed.seconds;
-      final opacity = (1 - age / 10).clamp(0.28, 1.0).toDouble();
       _drawPulseSample(
         canvas,
-        sample: timed.sample,
+        sample: samples[i],
         x: x,
         segmentWidth: _sampleSpacing,
         height: size.height,
-        ink: Paint()..color = Palette.yellow.withValues(alpha: opacity),
+        ink: Paint()
+          ..color = Palette.yellow.withValues(
+            alpha: (0.28 + 0.72 * i / samples.length).clamp(0.28, 1.0),
+          ),
       );
     }
     final fade = Paint()
@@ -232,7 +242,7 @@ void _drawPulseSample(
     canvas.drawRect(Rect.fromLTWH(x, y, segmentWidth + 0.5, pulseHeight), ink);
     return;
   }
-  final count = (200 / sample.frequency).ceil();
+  final count = (200 / sample.frequency).ceil().clamp(1, 10);
   if (count <= 0) return;
   final step = segmentWidth / count;
   final barWidth = step * 0.62;
