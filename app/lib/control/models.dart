@@ -109,7 +109,7 @@ class Binding {
 }
 
 class ActionDefinition {
-  final String id, name;
+  final String id, registeredName, name;
   final List<String> inputs;
   final List<Map<String, dynamic>> fields;
   final String source;
@@ -118,12 +118,20 @@ class ActionDefinition {
     Map<String, dynamic> data,
     this.source, {
     this.builtin = false,
+    String? displayName,
   }) : id = data['id'] as String,
-       name = data['name'] as String,
+       registeredName = data['name'] as String,
+       name = displayName ?? data['name'] as String,
        inputs = List<String>.from(data['inputs'] as List),
        fields = (data['fields'] as List)
            .map((v) => Map<String, dynamic>.from(v as Map))
            .toList();
+  ActionDefinition withDisplayName(String displayName) => ActionDefinition(
+    {'id': id, 'name': registeredName, 'inputs': inputs, 'fields': fields},
+    source,
+    builtin: builtin,
+    displayName: displayName,
+  );
   Map<String, dynamic> get defaults => {
     for (final f in fields) f['key'] as String: f['default'],
   };

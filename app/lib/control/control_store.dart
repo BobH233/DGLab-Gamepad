@@ -15,7 +15,7 @@ class ControlStore {
   Future<Map<String, dynamic>?> read() async {
     if (!await file.exists()) return null;
     final json = jsonDecode(await file.readAsString());
-    if (json is! Map || !const {1, 2, 3, 4, 5}.contains(json['version'])) {
+    if (json is! Map || !const {1, 2, 3, 4, 5, 6}.contains(json['version'])) {
       throw const FormatException('配置文件版本不兼容');
     }
     return Map<String, dynamic>.from(json);

@@ -148,6 +148,10 @@ class ControlDesk extends ChangeNotifier {
           }
           customWaveforms = restoredWaveforms;
           setCustomWaveformCatalog(customWaveforms);
+          final scriptNames = switch (saved['scriptNames']) {
+            final Map<dynamic, dynamic> names => names,
+            _ => const <dynamic, dynamic>{},
+          };
           for (final source in (saved['scripts'] as List? ?? []).take(32)) {
             try {
               final runtime = ActionRuntime(source as String);
@@ -155,7 +159,18 @@ class ControlDesk extends ChangeNotifier {
                 runtime.dispose();
                 throw const FormatException('脚本 ID 重复');
               }
-              actions[runtime.definition.id] = runtime.definition;
+              final savedName = scriptNames[runtime.definition.id];
+              String? displayName;
+              if (savedName is String) {
+                try {
+                  displayName = _normalizeScriptName(savedName);
+                } catch (e) {
+                  loadWarnings.add('脚本名称未载入：$e');
+                }
+              }
+              actions[runtime.definition.id] = displayName == null
+                  ? runtime.definition
+                  : runtime.definition.withDisplayName(displayName);
               runtime.dispose();
             } catch (e) {
               loadWarnings.add('脚本未载入：$e');
@@ -398,7 +413,7 @@ class ControlDesk extends ChangeNotifier {
     final channelKey = _channelKey;
     try {
       await store?.save({
-        'version': 5,
+        'version': 6,
         'autoScrollToAction': autoScrollToAction,
         'bindings': bindings.map((b) => b.toJson()).toList(),
         'customWaveforms': customWaveforms
@@ -408,6 +423,11 @@ class ControlDesk extends ChangeNotifier {
             .where((a) => !a.builtin)
             .map((a) => a.source)
             .toList(),
+        'scriptNames': {
+          for (final action in actions.values)
+            if (!action.builtin && action.name != action.registeredName)
+              action.id: action.name,
+        },
         'channels': engine.state.channels.map(
           (k, v) => MapEntry(k, {
             'base': v.base,
@@ -857,6 +877,26 @@ class ControlDesk extends ChangeNotifier {
     actions[definition.id] = definition;
     await save();
     _notify();
+  }
+
+  Future<void> renameScript(String id, String value) async {
+    final action = actions[id];
+    if (action == null || action.builtin) {
+      throw const FormatException('只能重命名导入脚本');
+    }
+    final name = _normalizeScriptName(value);
+    if (name == action.name) return;
+    actions[id] = action.withDisplayName(name);
+    _notify();
+    await save();
+  }
+
+  static String _normalizeScriptName(String value) {
+    final name = value.trim();
+    if (name.isEmpty || name.length > 40) {
+      throw const FormatException('脚本名称需要 1–40 个字符');
+    }
+    return name;
   }
 
   Future<void> uninstall(String id) async {

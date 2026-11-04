@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../control/control_desk.dart';
+import '../../control/models.dart';
 import '../palette.dart';
 
 class ScriptsPage extends StatefulWidget {
@@ -122,6 +123,23 @@ class _ScriptsPageState extends State<ScriptsPage> {
                           ),
                           if (!a.builtin)
                             IconButton(
+                              tooltip: '重命名脚本',
+                              onPressed: () async {
+                                final renamed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (_) => _RenameScriptDialog(
+                                    desk: widget.desk,
+                                    action: a,
+                                  ),
+                                );
+                                if (renamed == true && mounted) {
+                                  setState(() {});
+                                }
+                              },
+                              icon: const Icon(Icons.edit_outlined, size: 19),
+                            ),
+                          if (!a.builtin)
+                            IconButton(
                               tooltip: '删除脚本及其绑定',
                               onPressed: () async {
                                 await widget.desk.uninstall(a.id);
@@ -167,6 +185,82 @@ class _ScriptsPageState extends State<ScriptsPage> {
       if (mounted) setState(() => error = e.toString());
     }
   }
+}
+
+class _RenameScriptDialog extends StatefulWidget {
+  final ControlDesk desk;
+  final ActionDefinition action;
+  const _RenameScriptDialog({required this.desk, required this.action});
+  @override
+  State<_RenameScriptDialog> createState() => _RenameScriptDialogState();
+}
+
+class _RenameScriptDialogState extends State<_RenameScriptDialog> {
+  late final TextEditingController controller =
+      TextEditingController(text: widget.action.name)
+        ..selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.action.name.length,
+        );
+  String? error;
+  bool busy = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.desk.renameScript(widget.action.id, controller.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Palette.surface,
+    title: const Text(
+      '重命名脚本',
+      style: TextStyle(color: Palette.yellow, fontSize: 20),
+    ),
+    content: SizedBox(
+      width: 420,
+      child: TextField(
+        key: const ValueKey('script-rename-field'),
+        controller: controller,
+        autofocus: true,
+        enabled: !busy,
+        maxLength: 40,
+        onSubmitted: busy ? null : (_) => _save(),
+        decoration: InputDecoration(
+          labelText: '脚本名称',
+          errorText: error,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: busy ? null : _save, child: const Text('保存')),
+    ],
+  );
 }
 
 class ScriptEditor extends StatefulWidget {

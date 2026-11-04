@@ -19,6 +19,7 @@ class ControlEngine {
   final Map<String, _Slot> _slots = {};
   final Map<String, String> errors = {};
   final List<String> eventLog = [];
+  Map<String, ActionDefinition> _definitions = const {};
   GamepadState _input = GamepadState.neutral;
   GamepadState _rawInput = GamepadState.neutral;
   bool _live = false;
@@ -75,6 +76,7 @@ class ControlEngine {
     _slots
       ..clear()
       ..addAll(next);
+    _definitions = definitions;
     errors.clear();
     _live = false;
   }
@@ -197,7 +199,7 @@ class ControlEngine {
           event['type'] != 'value') {
         eventLog.insert(
           0,
-          '${inputLabels[binding.input]} · ${slot.runtime.definition.name}',
+          '${inputLabels[binding.input]} · ${_definitions[binding.action]?.name ?? slot.runtime.definition.name}',
         );
         if (eventLog.length > 40) eventLog.removeLast();
       }

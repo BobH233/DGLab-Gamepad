@@ -70,7 +70,7 @@ void main() {
         expect(desk.engine.state.enabled('A'), isTrue);
         await Future<void>.delayed(const Duration(milliseconds: 750));
         final saved = await store.read();
-        expect(saved!['version'], 5);
+        expect(saved!['version'], 6);
         expect(saved['autoScrollToAction'], isFalse);
         expect(saved['channels']['A']['base'], 5);
         expect(saved['channels']['A']['linear']['amount'], 75);
@@ -123,7 +123,7 @@ void main() {
       expect(desk.customWaveforms.single.id, imported.id);
       expect(desk.engine.state.channels['A']!.waveform, imported.id);
       final saved = await store.read();
-      expect(saved!['version'], 5);
+      expect(saved!['version'], 6);
       expect(saved['customWaveforms'], hasLength(1));
 
       await restored.initialize(storage: store, assets: _Assets());
@@ -170,6 +170,101 @@ void main() {
       }
     },
   );
+  test(
+    'custom script names persist without changing source or bindings',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('dglab-script-name-');
+      final store = ControlStore(File('${dir.path}/profile.json'));
+      final monitor = InputMonitor(
+        events: const Stream.empty(),
+        observeLifecycle: false,
+      );
+      final desk = ControlDesk(monitor);
+      final restored = ControlDesk(monitor);
+      try {
+        final source = File('assets/scripts/example.js').readAsStringSync();
+        await desk.initialize(storage: store, assets: _Assets());
+        final action = desk.validateScript(source);
+        await desk.install(action);
+        await desk.setBinding(
+          Binding(
+            id: 'renamed_script',
+            input: 'south',
+            action: action.id,
+            config: action.defaults,
+          ),
+        );
+        await desk.renameScript(action.id, '  我的点按调强  ');
+
+        expect(desk.actions[action.id]!.name, '我的点按调强');
+        expect(desk.actions[action.id]!.registeredName, '点按调强');
+        desk.engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
+        desk.engine.input(
+          GamepadState({Control.south: 1}),
+          live: true,
+          deviceId: 'pad',
+        );
+        expect(desk.engine.eventLog.first, contains('我的点按调强'));
+
+        final saved = await store.read();
+        expect(saved!['version'], 6);
+        expect(saved['scripts'], [source]);
+        expect(saved['scriptNames'], {action.id: '我的点按调强'});
+
+        await restored.initialize(storage: store, assets: _Assets());
+        expect(restored.ready, isTrue, reason: restored.error);
+        expect(restored.actions[action.id]!.name, '我的点按调强');
+        expect(restored.actions[action.id]!.source, source);
+        expect(
+          restored.bindings.singleWhere((b) => b.action == action.id).input,
+          'south',
+        );
+
+        await expectLater(
+          desk.renameScript('builtin.boost', '不能改名'),
+          throwsFormatException,
+        );
+        await expectLater(
+          desk.renameScript(action.id, '   '),
+          throwsFormatException,
+        );
+        await expectLater(
+          desk.renameScript(action.id, '名' * 41),
+          throwsFormatException,
+        );
+        await desk.save();
+      } finally {
+        desk.dispose();
+        restored.dispose();
+        monitor.dispose();
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+  test('version 5 string scripts load with their registered name', () async {
+    final dir = Directory.systemTemp.createTempSync('dglab-script-v5-');
+    final store = ControlStore(File('${dir.path}/profile.json'));
+    final source = File('assets/scripts/example.js').readAsStringSync();
+    await store.save({
+      'version': 5,
+      'scripts': [source],
+    });
+    final monitor = InputMonitor(
+      events: const Stream.empty(),
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor);
+    try {
+      await desk.initialize(storage: store, assets: _Assets());
+      expect(desk.ready, isTrue, reason: desk.error);
+      expect(desk.actions['user.stepStrength']!.name, '点按调强');
+      expect(desk.actions['user.stepStrength']!.source, source);
+    } finally {
+      desk.dispose();
+      monitor.dispose();
+      await dir.delete(recursive: true);
+    }
+  });
   test('version 1 profiles gain the default Y touch binding', () async {
     final dir = Directory.systemTemp.createTempSync('dglab-migrate-');
     final store = ControlStore(File('${dir.path}/profile.json'));
@@ -184,7 +279,7 @@ void main() {
       expect(desk.ready, isTrue, reason: desk.error);
       final touch = desk.bindings.singleWhere((b) => b.input == 'north');
       expect(touch.action, 'builtin.toggleTouch');
-      expect((await store.read())!['version'], 5);
+      expect((await store.read())!['version'], 6);
     } finally {
       desk.dispose();
       monitor.dispose();
@@ -238,7 +333,7 @@ void main() {
       );
       await desk.save();
       final saved = await store.read();
-      expect(saved!['version'], 5);
+      expect(saved!['version'], 6);
       expect(saved['channels']['A']['linear']['amount'], 55);
       expect(saved['channels']['A']['boost']['amount'], 42);
     } finally {
