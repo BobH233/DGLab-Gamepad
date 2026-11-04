@@ -83,15 +83,20 @@ void main() {
         SliderInteraction.slideThumb,
       );
       desk.setBase('A', 100, persist: false);
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(tester.widget<Slider>(slider).value, 100);
       final sliderRect = tester.getRect(slider);
       await tester.tapAt(
         Offset(sliderRect.left + sliderRect.width * 0.8, sliderRect.center.dy),
       );
       await tester.pump();
       expect(desk.engine.state.channels['A']!.base, 100);
-      await tester.dragFrom(sliderRect.center, const Offset(30, 0));
-      await tester.pump();
+      await tester.timedDrag(
+        slider,
+        const Offset(40, 0),
+        const Duration(milliseconds: 200),
+      );
+      await tester.pumpAndSettle();
       expect(desk.engine.state.channels['A']!.base, greaterThan(100));
       desk.setBase('A', 0, persist: false);
       await tester.pump();
@@ -227,6 +232,58 @@ void main() {
       });
     });
   }
+
+  testWidgets('compact landscape fits both complete channel cards', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(932, 430);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Palette.background,
+          colorScheme: const ColorScheme.dark(
+            primary: Palette.yellow,
+            surface: Palette.surface,
+          ),
+        ),
+        home: ControlHome(desk: desk),
+      ),
+    );
+
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    final dashboard = find.byType(ListView).first;
+    final viewport = tester.getRect(dashboard);
+    for (final channel in channelIds) {
+      final card = find
+          .ancestor(
+            of: find.text('$channel 通道').first,
+            matching: find.byType(Material),
+          )
+          .first;
+      final rect = tester.getRect(card);
+      expect(rect.top, greaterThanOrEqualTo(viewport.top));
+      expect(rect.bottom, lessThanOrEqualTo(viewport.bottom));
+    }
+    expect(tester.takeException(), isNull);
+
+    await tester.pumpWidget(const SizedBox());
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
 
   testWidgets('temporary label edits independent channel controls', (
     tester,

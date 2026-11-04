@@ -83,10 +83,11 @@ class _MonitorScreenState extends State<MonitorScreen> {
                                   Text(
                                     'DG-LAB',
                                     style: TextStyle(
+                                      fontFamily: 'Arial',
                                       color: Palette.yellow,
                                       fontSize: 25,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: -0.8,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.3,
                                     ),
                                   ),
                                   SizedBox(width: 20),

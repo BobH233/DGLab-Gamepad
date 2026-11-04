@@ -203,260 +203,393 @@ class _ControlHomeState extends State<ControlHome> {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: desk,
-    builder: (context, _) => Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 16, 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          children: [
-                            const Text(
-                              'DG-LAB',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
-                                color: Palette.yellow,
-                                letterSpacing: -0.6,
-                              ),
-                            ),
-                            if (MediaQuery.sizeOf(context).width >= 600) ...[
-                              const SizedBox(width: 14),
-                              Text(
-                                ['控制台', '按键绑定', '操作脚本'][page],
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Palette.muted,
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final compactLandscape = size.width > size.height && size.height < 600;
+    final safePadding = MediaQuery.paddingOf(context);
+    final railOnRight = safePadding.left >= safePadding.right;
+    return ListenableBuilder(
+      listenable: desk,
+      builder: (context, _) => Scaffold(
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Padding(
+                padding: compactLandscape
+                    ? EdgeInsets.only(
+                        left: railOnRight ? 0 : 74,
+                        right: railOnRight ? 74 : 0,
+                      )
+                    : EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: compactLandscape
+                          ? const EdgeInsets.fromLTRB(16, 4, 10, 4)
+                          : const EdgeInsets.fromLTRB(24, 20, 16, 14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      'DG-LAB',
+                                      style: TextStyle(
+                                        fontFamily: 'Arial',
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w700,
+                                        color: Palette.yellow,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                    if (MediaQuery.sizeOf(context).width >=
+                                        600) ...[
+                                      const SizedBox(width: 14),
+                                      Text(
+                                        ['控制台', '按键绑定', '操作脚本'][page],
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          color: Palette.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
-                            ],
-                          ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '手柄监测',
+                            visualDensity: compactLandscape
+                                ? VisualDensity.compact
+                                : VisualDensity.standard,
+                            constraints: compactLandscape
+                                ? const BoxConstraints.tightFor(
+                                    width: 36,
+                                    height: 36,
+                                  )
+                                : null,
+                            icon: const Icon(
+                              Icons.sports_esports_outlined,
+                              color: Palette.yellow,
+                            ),
+                            onPressed: () async {
+                              desk.beginEdit();
+                              await Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      MonitorScreen(monitor: desk.monitor),
+                                ),
+                              );
+                              if (page == 0) desk.endEdit();
+                            },
+                          ),
+                          TextButton.icon(
+                            onPressed: () => desk.setAutoScrollToAction(
+                              !desk.autoScrollToAction,
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: desk.autoScrollToAction
+                                  ? Palette.yellow
+                                  : Palette.muted,
+                              minimumSize: Size(0, compactLandscape ? 34 : 40),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: compactLandscape ? 6 : 8,
+                              ),
+                              visualDensity: VisualDensity.compact,
+                              textStyle: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            icon: Icon(
+                              desk.autoScrollToAction
+                                  ? Icons.center_focus_strong
+                                  : Icons.center_focus_weak,
+                              size: 18,
+                            ),
+                            label: Text(
+                              '自动滚动：${desk.autoScrollToAction ? '开' : '关'}',
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          if (MediaQuery.sizeOf(context).width < 360)
+                            IconButton(
+                              tooltip: desk.anyChannelEnabled ? '全部停止' : '全部启动',
+                              onPressed: desk.toggleAllChannels,
+                              icon: Icon(
+                                desk.anyChannelEnabled
+                                    ? Icons.stop_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 18,
+                              ),
+                            )
+                          else
+                            OutlinedButton.icon(
+                              onPressed: desk.toggleAllChannels,
+                              style: compactLandscape
+                                  ? OutlinedButton.styleFrom(
+                                      minimumSize: const Size(0, 34),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                    )
+                                  : null,
+                              icon: Icon(
+                                desk.anyChannelEnabled
+                                    ? Icons.stop_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 18,
+                              ),
+                              label: Text(
+                                desk.anyChannelEnabled ? '全部停止' : '全部启动',
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (desk.error != null)
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: SelectableText(
+                          desk.error!,
+                          style: const TextStyle(color: Palette.yellow),
                         ),
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '手柄监测',
-                    icon: const Icon(
-                      Icons.sports_esports_outlined,
-                      color: Palette.yellow,
-                    ),
-                    onPressed: () async {
-                      desk.beginEdit();
-                      await Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => MonitorScreen(monitor: desk.monitor),
+                    if (desk.persistenceError != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Text(
+                          desk.persistenceError!,
+                          style: const TextStyle(
+                            color: Palette.yellow,
+                            fontSize: 12,
+                          ),
                         ),
-                      );
-                      if (page == 0) desk.endEdit();
-                    },
-                  ),
-                  TextButton.icon(
-                    onPressed: () =>
-                        desk.setAutoScrollToAction(!desk.autoScrollToAction),
-                    style: TextButton.styleFrom(
-                      foregroundColor: desk.autoScrollToAction
-                          ? Palette.yellow
-                          : Palette.muted,
-                      minimumSize: const Size(0, 40),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      visualDensity: VisualDensity.compact,
-                      textStyle: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    icon: Icon(
-                      desk.autoScrollToAction
-                          ? Icons.center_focus_strong
-                          : Icons.center_focus_weak,
-                      size: 18,
-                    ),
-                    label: Text('自动滚动：${desk.autoScrollToAction ? '开' : '关'}'),
-                  ),
-                  const SizedBox(width: 4),
-                  if (MediaQuery.sizeOf(context).width < 360)
-                    IconButton(
-                      tooltip: desk.anyChannelEnabled ? '全部停止' : '全部启动',
-                      onPressed: desk.toggleAllChannels,
-                      icon: Icon(
-                        desk.anyChannelEnabled
-                            ? Icons.stop_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 18,
+                    if (desk.loadWarnings.isNotEmpty)
+                      ExpansionTile(
+                        title: Text('${desk.loadWarnings.length} 项配置未载入'),
+                        children: [
+                          for (final warning in desk.loadWarnings)
+                            ListTile(title: Text(warning)),
+                        ],
                       ),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: desk.toggleAllChannels,
-                      icon: Icon(
-                        desk.anyChannelEnabled
-                            ? Icons.stop_rounded
-                            : Icons.play_arrow_rounded,
-                        size: 18,
-                      ),
-                      label: Text(desk.anyChannelEnabled ? '全部停止' : '全部启动'),
+                    Expanded(
+                      child: !desk.ready
+                          ? const Center(child: CircularProgressIndicator())
+                          : switch (page) {
+                              1 => BindingsPage(desk: desk),
+                              2 => ScriptsPage(desk: desk),
+                              _ => _dashboard(
+                                context,
+                                compactLandscape: compactLandscape,
+                              ),
+                            },
                     ),
-                ],
-              ),
-            ),
-            if (desk.error != null)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: SelectableText(
-                  desk.error!,
-                  style: const TextStyle(color: Palette.yellow),
+                  ],
                 ),
               ),
-            if (desk.persistenceError != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Text(
-                  desk.persistenceError!,
-                  style: const TextStyle(color: Palette.yellow, fontSize: 12),
+              if (compactLandscape)
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: railOnRight ? null : 0,
+                  right: railOnRight ? 0 : null,
+                  child: _sideNavigation(onRight: railOnRight),
                 ),
-              ),
-            if (desk.loadWarnings.isNotEmpty)
-              ExpansionTile(
-                title: Text('${desk.loadWarnings.length} 项配置未载入'),
-                children: [
-                  for (final warning in desk.loadWarnings)
-                    ListTile(title: Text(warning)),
-                ],
-              ),
-            Expanded(
-              child: !desk.ready
-                  ? const Center(child: CircularProgressIndicator())
-                  : switch (page) {
-                      1 => BindingsPage(desk: desk),
-                      2 => ScriptsPage(desk: desk),
-                      _ => _dashboard(context),
-                    },
-            ),
-          ],
+            ],
+          ),
         ),
+        bottomNavigationBar: compactLandscape
+            ? null
+            : NavigationBarTheme(
+                data: NavigationBarThemeData(
+                  labelTextStyle: WidgetStatePropertyAll(
+                    const TextStyle(fontSize: 12),
+                  ),
+                ),
+                child: NavigationBar(
+                  height: 68,
+                  selectedIndex: page,
+                  onDestinationSelected: navigate,
+                  backgroundColor: Palette.surface,
+                  indicatorColor: Palette.yellow,
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.tune_rounded),
+                      selectedIcon: Icon(
+                        Icons.tune_rounded,
+                        color: Palette.background,
+                      ),
+                      label: '控制台',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.gamepad_outlined),
+                      selectedIcon: Icon(
+                        Icons.gamepad_outlined,
+                        color: Palette.background,
+                      ),
+                      label: '按键绑定',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.code_rounded),
+                      selectedIcon: Icon(
+                        Icons.code_rounded,
+                        color: Palette.background,
+                      ),
+                      label: '操作脚本',
+                    ),
+                  ],
+                ),
+              ),
       ),
-      bottomNavigationBar: NavigationBar(
-        height: 68,
-        selectedIndex: page,
-        onDestinationSelected: navigate,
+    );
+  }
+
+  Widget _sideNavigation({required bool onRight}) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Palette.surface,
+      border: Border(
+        left: onRight ? const BorderSide(color: Palette.line) : BorderSide.none,
+        right: onRight
+            ? BorderSide.none
+            : const BorderSide(color: Palette.line),
+      ),
+    ),
+    child: NavigationRailTheme(
+      data: const NavigationRailThemeData(
         backgroundColor: Palette.surface,
         indicatorColor: Palette.yellow,
+        selectedIconTheme: IconThemeData(color: Palette.background, size: 21),
+        unselectedIconTheme: IconThemeData(color: Palette.muted, size: 21),
+        selectedLabelTextStyle: TextStyle(
+          color: Palette.yellow,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelTextStyle: TextStyle(color: Palette.muted, fontSize: 10),
+      ),
+      child: NavigationRail(
+        minWidth: 74,
+        groupAlignment: -0.35,
+        labelType: NavigationRailLabelType.all,
+        selectedIndex: page,
+        onDestinationSelected: navigate,
         destinations: const [
-          NavigationDestination(
+          NavigationRailDestination(
             icon: Icon(Icons.tune_rounded),
-            selectedIcon: Icon(Icons.tune_rounded, color: Palette.background),
-            label: '控制台',
+            selectedIcon: Icon(Icons.tune_rounded),
+            label: Text('控制台'),
           ),
-          NavigationDestination(
+          NavigationRailDestination(
             icon: Icon(Icons.gamepad_outlined),
-            selectedIcon: Icon(
-              Icons.gamepad_outlined,
-              color: Palette.background,
-            ),
-            label: '按键绑定',
+            selectedIcon: Icon(Icons.gamepad_outlined),
+            label: Text('按键绑定'),
           ),
-          NavigationDestination(
+          NavigationRailDestination(
             icon: Icon(Icons.code_rounded),
-            selectedIcon: Icon(Icons.code_rounded, color: Palette.background),
-            label: '操作脚本',
+            selectedIcon: Icon(Icons.code_rounded),
+            label: Text('操作脚本'),
           ),
         ],
       ),
     ),
   );
 
-  Widget _dashboard(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-    children: [
-      Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1200),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _connection(),
-              const SizedBox(height: 22),
-              LayoutBuilder(
-                builder: (context, c) {
-                  final panels = [for (final id in channelIds) _channel(id)];
-                  return c.maxWidth < 600
-                      ? Column(
-                          children: [
-                            panels[0],
-                            const SizedBox(height: 14),
-                            panels[1],
-                          ],
-                        )
-                      : Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: panels[0]),
-                            const SizedBox(width: 18),
-                            Expanded(child: panels[1]),
-                          ],
-                        );
-                },
-              ),
-              const SizedBox(height: 28),
-              LayoutBuilder(
-                builder: (context, c) => _waveforms(
-                  c.maxWidth < 600
-                      ? 2
-                      : c.maxWidth < 900
-                      ? 3
-                      : 4,
-                ),
-              ),
-              if (desk.engine.errors.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                for (final entry in desk.engine.errors.entries)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Palette.yellow),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Palette.yellow,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '绑定 ${entry.key} 已停用：${entry.value}',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => navigate(1),
-                          child: const Text('检查'),
-                        ),
-                      ],
+  Widget _dashboard(BuildContext context, {required bool compactLandscape}) =>
+      ListView(
+        padding: compactLandscape
+            ? const EdgeInsets.fromLTRB(16, 2, 16, 10)
+            : const EdgeInsets.fromLTRB(24, 8, 24, 24),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1200),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _connection(compact: compactLandscape),
+                  SizedBox(height: compactLandscape ? 8 : 22),
+                  LayoutBuilder(
+                    builder: (context, c) {
+                      final panels = [
+                        for (final id in channelIds)
+                          _channel(id, compact: compactLandscape),
+                      ];
+                      return c.maxWidth < 600
+                          ? Column(
+                              children: [
+                                panels[0],
+                                const SizedBox(height: 14),
+                                panels[1],
+                              ],
+                            )
+                          : Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(child: panels[0]),
+                                const SizedBox(width: 18),
+                                Expanded(child: panels[1]),
+                              ],
+                            );
+                    },
+                  ),
+                  SizedBox(height: compactLandscape ? 16 : 28),
+                  LayoutBuilder(
+                    builder: (context, c) => _waveforms(
+                      c.maxWidth < 600
+                          ? 2
+                          : c.maxWidth < 900
+                          ? 3
+                          : 4,
                     ),
                   ),
-              ],
-            ],
+                  if (desk.engine.errors.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    for (final entry in desk.engine.errors.entries)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Palette.yellow),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Palette.yellow,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                '绑定 ${entry.key} 已停用：${entry.value}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => navigate(1),
+                              child: const Text('检查'),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-    ],
-  );
+        ],
+      );
 
-  Widget _connection() {
+  Widget _connection({required bool compact}) {
     final session = desk.monitor.session;
     final live = session.status == InputStatus.live;
     final status = switch (session.status) {
@@ -469,8 +602,8 @@ class _ControlHomeState extends State<ControlHome> {
       _ => '未连接手柄',
     };
     return Wrap(
-      spacing: 16,
-      runSpacing: 8,
+      spacing: compact ? 12 : 16,
+      runSpacing: compact ? 4 : 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Row(
@@ -478,15 +611,15 @@ class _ControlHomeState extends State<ControlHome> {
           children: [
             Icon(
               Icons.sports_esports_outlined,
-              size: 17,
+              size: compact ? 15 : 17,
               color: live ? Palette.yellow : Palette.muted,
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: compact ? 6 : 8),
             Text(
               status,
               style: TextStyle(
                 color: live ? Palette.yellow : Palette.muted,
-                fontSize: 12,
+                fontSize: compact ? 11 : 12,
               ),
             ),
           ],
@@ -494,13 +627,16 @@ class _ControlHomeState extends State<ControlHome> {
         if (session.device != null)
           Text(
             session.device!.name,
-            style: const TextStyle(color: Palette.muted, fontSize: 12),
+            style: TextStyle(color: Palette.muted, fontSize: compact ? 11 : 12),
           ),
         InkWell(
           onTap: () => showCoyoteSheet(context, desk.coyote),
           borderRadius: BorderRadius.circular(5),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 7 : 9,
+              vertical: compact ? 3 : 5,
+            ),
             decoration: BoxDecoration(
               color: Palette.surface,
               borderRadius: BorderRadius.circular(5),
@@ -513,10 +649,10 @@ class _ControlHomeState extends State<ControlHome> {
               children: [
                 Icon(
                   Icons.bluetooth_rounded,
-                  size: 14,
+                  size: compact ? 13 : 14,
                   color: desk.coyote.connected ? Palette.yellow : Palette.muted,
                 ),
-                const SizedBox(width: 5),
+                SizedBox(width: compact ? 4 : 5),
                 Text(
                   desk.coyote.connected
                       ? '${desk.coyote.deviceName ?? '郊狼 3'} · ${desk.coyote.batteryLevel ?? '--'}%'
@@ -525,7 +661,7 @@ class _ControlHomeState extends State<ControlHome> {
                     color: desk.coyote.connected
                         ? Palette.yellow
                         : Palette.muted,
-                    fontSize: 11,
+                    fontSize: compact ? 10 : 11,
                   ),
                 ),
               ],
@@ -536,7 +672,7 @@ class _ControlHomeState extends State<ControlHome> {
     );
   }
 
-  Widget _channel(String id) {
+  Widget _channel(String id, {required bool compact}) {
     final state = desk.engine.state;
     final channel = state.channels[id]!;
     final selected = state.selected == id, enabled = state.enabled(id);
@@ -572,7 +708,7 @@ class _ControlHomeState extends State<ControlHome> {
         onTap: () => desk.selectChannel(id),
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(compact ? 12 : 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -580,22 +716,22 @@ class _ControlHomeState extends State<ControlHome> {
                 children: [
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      padding: EdgeInsets.symmetric(vertical: compact ? 1 : 6),
                       child: Row(
                         children: [
                           Text(
                             '$id 通道',
                             style: TextStyle(
-                              fontSize: 20,
+                              fontSize: compact ? 16 : 20,
                               fontWeight: FontWeight.w600,
                               color: selected ? Palette.yellow : Palette.text,
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          SizedBox(width: compact ? 7 : 10),
                           if (selected)
-                            const Icon(
+                            Icon(
                               Icons.check_circle_outline,
-                              size: 16,
+                              size: compact ? 14 : 16,
                               color: Palette.yellow,
                             ),
                         ],
@@ -608,10 +744,23 @@ class _ControlHomeState extends State<ControlHome> {
                     style: IconButton.styleFrom(
                       backgroundColor: Palette.raised,
                       foregroundColor: Palette.yellow,
+                      minimumSize: compact
+                          ? const Size.square(34)
+                          : const Size.square(48),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: compact
+                          ? MaterialTapTargetSize.shrinkWrap
+                          : MaterialTapTargetSize.padded,
+                      visualDensity: compact
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
                     ),
-                    icon: const Icon(Icons.fingerprint_rounded, size: 21),
+                    icon: Icon(
+                      Icons.fingerprint_rounded,
+                      size: compact ? 18 : 21,
+                    ),
                   ),
-                  const SizedBox(width: 4),
+                  SizedBox(width: compact ? 2 : 4),
                   IconButton.filledTonal(
                     tooltip: enabled ? '停止 $id 通道' : '启动 $id 通道',
                     onPressed: () => desk.toggle(id),
@@ -622,32 +771,49 @@ class _ControlHomeState extends State<ControlHome> {
                       foregroundColor: enabled
                           ? Palette.background
                           : Palette.yellow,
+                      minimumSize: compact
+                          ? const Size.square(34)
+                          : const Size.square(48),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: compact
+                          ? MaterialTapTargetSize.shrinkWrap
+                          : MaterialTapTargetSize.padded,
+                      visualDensity: compact
+                          ? VisualDensity.compact
+                          : VisualDensity.standard,
                     ),
                     icon: Icon(
                       enabled ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: compact ? 18 : null,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: compact ? 4 : 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     '$intensity',
                     style: TextStyle(
-                      fontSize: 64,
-                      height: 1,
+                      fontSize: compact ? 42 : 64,
+                      height: compact ? 0.9 : 1,
                       fontWeight: FontWeight.w300,
                       color: live ? Palette.yellow : Palette.muted,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 8, bottom: 6),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: compact ? 6 : 8,
+                      bottom: compact ? 2 : 6,
+                    ),
                     child: Text(
                       '/ 200',
-                      style: TextStyle(color: Palette.muted, fontSize: 13),
+                      style: TextStyle(
+                        color: Palette.muted,
+                        fontSize: compact ? 11 : 13,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -657,15 +823,15 @@ class _ControlHomeState extends State<ControlHome> {
                       Text(
                         status,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: compact ? 10 : 12,
                           color: live ? Palette.yellow : Palette.muted,
                         ),
                       ),
-                      const SizedBox(height: 7),
+                      SizedBox(height: compact ? 3 : 7),
                       Text(
                         wave.name,
-                        style: const TextStyle(
-                          fontSize: 13,
+                        style: TextStyle(
+                          fontSize: compact ? 11 : 13,
                           color: Palette.text,
                         ),
                       ),
@@ -673,9 +839,9 @@ class _ControlHomeState extends State<ControlHome> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: compact ? 6 : 16),
               SizedBox(
-                height: 54,
+                height: compact ? 32 : 54,
                 width: double.infinity,
                 child: LiveWaveformView(
                   channel: id,
@@ -683,18 +849,21 @@ class _ControlHomeState extends State<ControlHome> {
                   active: live,
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: compact ? 8 : 16),
               Row(
                 children: [
-                  const Text(
+                  Text(
                     '基础强度',
-                    style: TextStyle(fontSize: 12, color: Palette.muted),
+                    style: TextStyle(
+                      fontSize: compact ? 10 : 12,
+                      color: Palette.muted,
+                    ),
                   ),
-                  const SizedBox(width: 10),
+                  SizedBox(width: compact ? 7 : 10),
                   Text(
                     '${channel.base.round()}',
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: TextStyle(
+                      fontSize: compact ? 12 : 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -705,9 +874,9 @@ class _ControlHomeState extends State<ControlHome> {
                       onTap: () => showChannelControlsDialog(context, desk, id),
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 7 : 9,
+                          vertical: compact ? 3 : 5,
                         ),
                         decoration: BoxDecoration(
                           color: Palette.raised,
@@ -723,16 +892,16 @@ class _ControlHomeState extends State<ControlHome> {
                           children: [
                             Icon(
                               Icons.tune_rounded,
-                              size: 14,
+                              size: compact ? 12 : 14,
                               color: offset.abs() > 0.1
                                   ? Palette.yellow
                                   : Palette.muted,
                             ),
-                            const SizedBox(width: 5),
+                            SizedBox(width: compact ? 4 : 5),
                             Text(
                               '临时 ${offset >= 0 ? '+' : ''}${offset.toStringAsFixed(0)}',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: compact ? 10 : 12,
                                 color: offset.abs() > 0.1
                                     ? Palette.yellow
                                     : Palette.muted,
@@ -745,7 +914,7 @@ class _ControlHomeState extends State<ControlHome> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: compact ? 3 : 10),
               Row(
                 children: [
                   _RepeatButton(
@@ -757,12 +926,16 @@ class _ControlHomeState extends State<ControlHome> {
                       persist: false,
                     ),
                     onEnd: () => unawaited(desk.save()),
+                    compact: compact,
                   ),
                   Expanded(
                     child: SliderTheme(
-                      data: SliderTheme.of(
-                        context,
-                      ).copyWith(inactiveTrackColor: Palette.line),
+                      data: SliderTheme.of(context).copyWith(
+                        inactiveTrackColor: Palette.line,
+                        overlayShape: compact
+                            ? const RoundSliderOverlayShape(overlayRadius: 13)
+                            : const RoundSliderOverlayShape(overlayRadius: 16),
+                      ),
                       child: Slider(
                         value: channel.base,
                         min: 0,
@@ -784,6 +957,7 @@ class _ControlHomeState extends State<ControlHome> {
                       persist: false,
                     ),
                     onEnd: () => unawaited(desk.save()),
+                    compact: compact,
                   ),
                 ],
               ),
@@ -1010,12 +1184,14 @@ class _RepeatButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onStep;
   final VoidCallback onEnd;
+  final bool compact;
 
   const _RepeatButton({
     required this.tooltip,
     required this.icon,
     required this.onStep,
     required this.onEnd,
+    this.compact = false,
   });
 
   @override
@@ -1070,8 +1246,12 @@ class _RepeatButtonState extends State<_RepeatButton> {
           color: Palette.yellow,
           shape: const CircleBorder(),
           child: SizedBox.square(
-            dimension: 38,
-            child: Icon(widget.icon, size: 20, color: Palette.background),
+            dimension: widget.compact ? 32 : 38,
+            child: Icon(
+              widget.icon,
+              size: widget.compact ? 18 : 20,
+              color: Palette.background,
+            ),
           ),
         ),
       ),
