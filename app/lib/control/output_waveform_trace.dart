@@ -16,11 +16,32 @@ class OutputPulseFrame {
       OutputPulseFrame(const [10, 10, 10, 10, 0, 0, 0, 0]);
 }
 
+class OutputPulseSnapshot {
+  final OutputFrame frame;
+  final OutputPulseFrame a;
+  final OutputPulseFrame b;
+
+  const OutputPulseSnapshot(this.frame, this.a, this.b);
+
+  OutputPulseFrame forChannel(String id) => id == 'A' ? a : b;
+}
+
 class OutputPulseSequencer {
   int _indexA = 0;
   int _indexB = 0;
   String? _waveformA;
   String? _waveformB;
+
+  OutputPulseSnapshot sample(OutputFrame frame) {
+    OutputPulseFrame pulse(String id) {
+      final value = next(frame, id);
+      return frame.channels[id]?['enabled'] == true
+          ? value
+          : OutputPulseFrame.blank();
+    }
+
+    return OutputPulseSnapshot(frame, pulse('A'), pulse('B'));
+  }
 
   OutputPulseFrame next(OutputFrame? frame, String channel) {
     final values = frame?.channels[channel];
@@ -107,51 +128,67 @@ class OutputPulseSequencer {
   ];
 }
 
-class OutputWaveformTrace extends ChangeNotifier implements OutputSink {
-  static const maxSamples = 400;
-  static const sampleInterval = Duration(milliseconds: 100);
+class OutputPulseClock implements OutputSink {
+  static const interval = Duration(milliseconds: 100);
 
   final OutputPulseSequencer _sequencer = OutputPulseSequencer();
+  final StreamController<OutputPulseSnapshot> _pulses =
+      StreamController.broadcast(sync: true);
+  Timer? _timer;
+  OutputFrame _latestFrame = OutputFrame(0, const {});
+
+  OutputPulseClock({bool autoStart = true}) {
+    if (autoStart) {
+      _timer = Timer.periodic(interval, (_) {
+        _pulses.add(_sequencer.sample(_latestFrame));
+      });
+    }
+  }
+
+  Stream<OutputPulseSnapshot> get pulses => _pulses.stream;
+
+  @override
+  void accept(OutputFrame frame) => _latestFrame = frame;
+
+  void dispose() {
+    _timer?.cancel();
+    unawaited(_pulses.close());
+  }
+}
+
+class OutputWaveformTrace extends ChangeNotifier implements OutputSink {
+  static const maxSamples = 400;
+  static const sampleInterval = OutputPulseClock.interval;
+
+  final OutputPulseClock clock;
+  final bool _ownsClock;
   final Map<String, List<PulseSample>> _samples = {
     for (final id in channelIds) id: const [],
   };
-  late final Timer _timer;
-  OutputFrame? _latestFrame;
-  Set<String> _activeChannels = const {};
+  late final StreamSubscription<OutputPulseSnapshot> _subscription;
 
-  OutputWaveformTrace({bool autoStart = true}) {
-    _timer = Timer.periodic(sampleInterval, (_) => _sample());
-    if (!autoStart) _timer.cancel();
+  OutputWaveformTrace({OutputPulseClock? clock, bool autoStart = true})
+    : clock = clock ?? OutputPulseClock(autoStart: autoStart),
+      _ownsClock = clock == null {
+    _subscription = this.clock.pulses.listen(_sample);
   }
 
   List<PulseSample> samplesFor(String channel) => _samples[channel] ?? const [];
 
   @override
-  void accept(OutputFrame frame) {
-    final active = {
-      for (final id in channelIds)
-        if (frame.channels[id]?['enabled'] == true) id,
-    };
-    _latestFrame = frame;
-    _activeChannels = active;
-  }
+  void accept(OutputFrame frame) => clock.accept(frame);
 
-  void _sample() {
-    final frame = _latestFrame;
-    if (frame == null) return;
+  void _sample(OutputPulseSnapshot pulse) {
     var changed = false;
     for (final id in channelIds) {
-      final active = _activeChannels.contains(id);
-      if (!active && _samples[id]!.isEmpty) {
-        continue;
-      }
-      final pulse = _sequencer.next(frame, id);
+      final active = pulse.frame.channels[id]?['enabled'] == true;
+      if (!active && _samples[id]!.isEmpty) continue;
       final next = [
         ..._samples[id]!,
         if (active)
-          ...pulse.samples
+          ...pulse.forChannel(id).samples
         else
-          for (final _ in pulse.samples) const PulseSample(10, 0),
+          for (var i = 0; i < 4; i++) const PulseSample(10, 0),
       ];
       if (next.length > maxSamples) {
         next.removeRange(0, next.length - maxSamples);
@@ -164,7 +201,8 @@ class OutputWaveformTrace extends ChangeNotifier implements OutputSink {
 
   @override
   void dispose() {
-    _timer.cancel();
+    unawaited(_subscription.cancel());
+    if (_ownsClock) clock.dispose();
     super.dispose();
   }
 }

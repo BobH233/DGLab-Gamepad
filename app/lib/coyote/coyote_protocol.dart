@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import '../control/models.dart';
 import '../control/output_waveform_trace.dart';
 
 const coyoteMainServiceUuid = '0000180c-0000-1000-8000-00805f9b34fb';
@@ -9,38 +8,30 @@ const coyoteWriteCharacteristicUuid = '0000150a-0000-1000-8000-00805f9b34fb';
 const coyoteNotifyCharacteristicUuid = '0000150b-0000-1000-8000-00805f9b34fb';
 const coyoteBatteryCharacteristicUuid = '00001500-0000-1000-8000-00805f9b34fb';
 const coyoteDeviceNamePrefix = '47';
-const coyotePulseInterval = Duration(milliseconds: 100);
+const coyotePulseInterval = OutputPulseClock.interval;
 
 class CoyotePacketEncoder {
   int _nextStrengthSequence = 1;
   int _sentStrengthA = 0;
   int _sentStrengthB = 0;
-  final OutputPulseSequencer _pulses = OutputPulseSequencer();
 
   Uint8List encode(
-    OutputFrame? frame, {
+    OutputPulseSnapshot? pulse, {
     bool forceStrength = false,
     bool silence = false,
     bool allowStrengthChange = true,
   }) {
-    final strengthA = silence ? 0 : _strength(frame, 'A');
-    final strengthB = silence ? 0 : _strength(frame, 'B');
+    final strengthA = silence ? 0 : _strength(pulse, 'A');
+    final strengthB = silence ? 0 : _strength(pulse, 'B');
     var changed = 0;
     if (allowStrengthChange) {
       if (forceStrength || strengthA != _sentStrengthA) changed |= 0xC;
       if (forceStrength || strengthB != _sentStrengthB) changed |= 0x3;
     }
 
-    final pulseA = silence
-        ? _decodePulse(_blankPulse)
-        : frame?.channels['A']?['enabled'] == true
-        ? _pulses.next(frame, 'A').bytes
-        : _silentPulse(frame, 'A');
-    final pulseB = silence
-        ? _decodePulse(_blankPulse)
-        : frame?.channels['B']?['enabled'] == true
-        ? _pulses.next(frame, 'B').bytes
-        : _silentPulse(frame, 'B');
+    final blank = OutputPulseFrame.blank().bytes;
+    final pulseA = silence ? blank : pulse?.a.bytes ?? blank;
+    final pulseB = silence ? blank : pulse?.b.bytes ?? blank;
 
     final packet = Uint8List(20);
     packet[0] = 0xB0;
@@ -61,22 +52,12 @@ class CoyotePacketEncoder {
     return packet;
   }
 
-  int _strength(OutputFrame? frame, String channel) {
-    final value = frame?.channels[channel]?['intensity'];
+  int _strength(OutputPulseSnapshot? pulse, String channel) {
+    final values = pulse?.frame.channels[channel];
+    if (values?['enabled'] != true) return 0;
+    final value = values?['intensity'];
     return ((value as num?)?.round() ?? 0).clamp(0, 200);
   }
-
-  List<int> _silentPulse(OutputFrame? frame, String channel) {
-    if (frame != null) _pulses.next(frame, channel);
-    return _decodePulse(_blankPulse);
-  }
-
-  List<int> _decodePulse(String value) => [
-    for (var i = 0; i < 8; i++)
-      int.parse(value.substring(i * 2, i * 2 + 2), radix: 16),
-  ];
-
-  static const _blankPulse = '0A0A0A0A00000000';
 
   Uint8List encodeBalance({
     required int frequencyBalanceA,

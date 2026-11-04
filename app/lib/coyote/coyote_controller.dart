@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 import '../control/models.dart';
+import '../control/output_waveform_trace.dart';
 import '../platform/background_runtime.dart';
 import '../platform/bluetooth_permissions.dart';
 import 'coyote_protocol.dart';
@@ -59,11 +60,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   StreamSubscription<ConnectionStateUpdate>? _connectionSubscription;
   StreamSubscription<List<int>>? _notifySubscription;
   Timer? _scanTimer;
-  Timer? _pulseTimer;
+  final OutputPulseClock pulseClock = OutputPulseClock();
+  StreamSubscription<OutputPulseSnapshot>? _pulseSubscription;
   Timer? _batteryTimer;
   Timer? _ackTimer;
   CoyoteLink? _link;
-  OutputFrame? _latestFrame;
   CoyotePacketEncoder _encoder = CoyotePacketEncoder();
   bool _forceStrength = false;
   bool _writing = false;
@@ -102,7 +103,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   @override
   void accept(OutputFrame frame) {
-    _latestFrame = frame;
+    pulseClock.accept(frame);
     _desiredBalanceA = _balance(frame, 'A') ?? _desiredBalanceA;
     _desiredBalanceB = _balance(frame, 'B') ?? _desiredBalanceB;
   }
@@ -223,13 +224,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         return;
       }
       _encoder = CoyotePacketEncoder();
-      _latestFrame = null;
       _forceStrength = true;
       status = CoyoteStatus.connected;
       error = null;
-      _pulseTimer = Timer.periodic(
-        coyotePulseInterval,
-        (_) => unawaited(_sendNext()),
+      _pulseSubscription = pulseClock.pulses.listen(
+        (pulse) => unawaited(_sendNext(pulse)),
       );
       _batteryTimer = Timer.periodic(
         const Duration(minutes: 2),
@@ -244,7 +243,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     }
   }
 
-  Future<void> _sendNext() async {
+  Future<void> _sendNext([OutputPulseSnapshot? pulse]) async {
     final link = _link;
     if (_writing || link == null || !connected) {
       return;
@@ -274,9 +273,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         _sentBalanceA = balanceA;
         _sentBalanceB = balanceB;
       }
-      final frame = stop ? null : _latestFrame;
+      if (session != _session || !connected) return;
       final packet = _encoder.encode(
-        frame,
+        stop ? null : pulse,
         forceStrength: force,
         silence: stop,
         allowStrengthChange: stop || _awaitingSequence == null,
@@ -288,7 +287,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         _ackTimer = Timer(const Duration(milliseconds: 700), () {
           _awaitingSequence = null;
           _ackTimer = null;
-          unawaited(_sendNext());
+          _forceStrength = true;
         });
       }
       await link.write(packet).timeout(writeTimeout);
@@ -300,7 +299,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       // newer one.
       if (session == _session) {
         _writing = false;
-        if (_stopPending) unawaited(_sendNext());
+        if (_stopPending && !stop) unawaited(_sendNext());
       }
     }
   }
@@ -321,7 +320,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> emergencyStop() async {
-    _latestFrame = null;
+    pulseClock.accept(OutputFrame(0, const {}));
     _forceStrength = true;
     _stopPending = true;
     _awaitingSequence = null;
@@ -331,11 +330,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   void flushLatest() {
-    if (!connected) return;
-    _awaitingSequence = null;
-    _ackTimer?.cancel();
-    _ackTimer = null;
-    unawaited(_sendNext());
+    if (connected) _forceStrength = true;
   }
 
   void _handleNotification(List<int> value) {
@@ -365,8 +360,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   Future<void> disconnect() async {
     _manualDisconnect = true;
-    _pulseTimer?.cancel();
-    _pulseTimer = null;
+    unawaited(_pulseSubscription?.cancel());
+    _pulseSubscription = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
     _ackTimer?.cancel();
@@ -393,8 +388,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _writing = false;
     _writeFailures = 0;
     _stopPending = false;
-    _pulseTimer?.cancel();
-    _pulseTimer = null;
+    unawaited(_pulseSubscription?.cancel());
+    _pulseSubscription = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
     _ackTimer?.cancel();
@@ -410,7 +405,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     deviceStrengthA = 0;
     deviceStrengthB = 0;
     batteryLevel = null;
-    _latestFrame = null;
     _forceStrength = false;
     _desiredBalanceA = null;
     _desiredBalanceB = null;
@@ -452,7 +446,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   void dispose() {
     _disposed = true;
     _scanTimer?.cancel();
-    _pulseTimer?.cancel();
+    unawaited(_pulseSubscription?.cancel());
+    pulseClock.dispose();
     _batteryTimer?.cancel();
     _ackTimer?.cancel();
     unawaited(_scanSubscription?.cancel());

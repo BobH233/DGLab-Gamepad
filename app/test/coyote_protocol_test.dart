@@ -13,7 +13,11 @@ OutputFrame frame({required int a, required int b}) => OutputFrame(1, {
 void main() {
   test('Coyote 3 packet carries strengths and both waveform frames', () {
     final encoder = CoyotePacketEncoder();
-    final packet = encoder.encode(frame(a: 80, b: 120), forceStrength: true);
+    final sample = OutputPulseSequencer().sample;
+    final packet = encoder.encode(
+      sample(frame(a: 80, b: 120)),
+      forceStrength: true,
+    );
 
     expect(packet, hasLength(20));
     expect(packet[0], 0xB0);
@@ -38,11 +42,12 @@ void main() {
 
   test('Coyote 3 packet marks only changed channels', () {
     final encoder = CoyotePacketEncoder();
-    encoder.encode(frame(a: 80, b: 120), forceStrength: true);
-    final unchanged = encoder.encode(frame(a: 80, b: 120));
+    final sample = OutputPulseSequencer().sample;
+    encoder.encode(sample(frame(a: 80, b: 120)), forceStrength: true);
+    final unchanged = encoder.encode(sample(frame(a: 80, b: 120)));
     expect(unchanged[1], 0x00);
 
-    final changedA = encoder.encode(frame(a: 90, b: 120));
+    final changedA = encoder.encode(sample(frame(a: 90, b: 120)));
     expect(changedA[1], 0x2C);
     expect(changedA[2], 90);
     expect(changedA[3], 120);
@@ -50,6 +55,7 @@ void main() {
 
   test('inactive time advances the cached waveform phase', () {
     final encoder = CoyotePacketEncoder();
+    final sample = OutputPulseSequencer().sample;
     final active = OutputFrame(1, {
       'A': {'enabled': true, 'intensity': 80, 'waveformId': waveforms[0].id},
       'B': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[1].id},
@@ -59,9 +65,9 @@ void main() {
       'B': {'enabled': false, 'intensity': 0, 'waveformId': waveforms[1].id},
     });
 
-    final first = encoder.encode(active, forceStrength: true);
-    final stopped = encoder.encode(inactive);
-    final restarted = encoder.encode(active);
+    final first = encoder.encode(sample(active), forceStrength: true);
+    final stopped = encoder.encode(sample(inactive));
+    final restarted = encoder.encode(sample(active));
 
     expect(stopped.sublist(4, 12), [10, 10, 10, 10, 0, 0, 0, 0]);
     expect(restarted.sublist(4, 12), isNot(first.sublist(4, 12)));
@@ -76,9 +82,13 @@ void main() {
 
   test('deferred strength change keeps waveform stream alive', () {
     final encoder = CoyotePacketEncoder();
-    final first = encoder.encode(frame(a: 80, b: 120), forceStrength: true);
+    final sample = OutputPulseSequencer().sample;
+    final first = encoder.encode(
+      sample(frame(a: 80, b: 120)),
+      forceStrength: true,
+    );
     final deferred = encoder.encode(
-      frame(a: 90, b: 120),
+      sample(frame(a: 90, b: 120)),
       allowStrengthChange: false,
     );
 
@@ -86,16 +96,17 @@ void main() {
     expect(deferred[1], 0x00);
     expect(deferred.sublist(4, 12), isNot(first.sublist(4, 12)));
 
-    final delivered = encoder.encode(frame(a: 90, b: 120));
+    final delivered = encoder.encode(sample(frame(a: 90, b: 120)));
     expect(delivered[1], 0x2C);
     expect(delivered[2], 90);
   });
 
   test('strength sequence cycles from 1 through F', () {
     final encoder = CoyotePacketEncoder();
+    final sample = OutputPulseSequencer().sample;
     final sequences = <int>[];
     for (var strength = 1; strength <= 16; strength++) {
-      sequences.add(encoder.encode(frame(a: strength, b: 0))[1] >> 4);
+      sequences.add(encoder.encode(sample(frame(a: strength, b: 0)))[1] >> 4);
     }
     expect(sequences, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1]);
   });
@@ -119,20 +130,22 @@ void main() {
   test('dynamic touch frame overrides preset frequency and pulse width', () {
     Uint8List encode(double frequencyMs) {
       return CoyotePacketEncoder().encode(
-        OutputFrame(1, {
-          'A': {
-            'intensity': 90,
-            'enabled': true,
-            'waveformId': waveforms.first.id,
-            'frequencyMs': frequencyMs,
-            'waveformIntensity': 100,
-          },
-          'B': {
-            'intensity': 0,
-            'enabled': false,
-            'waveformId': waveforms[1].id,
-          },
-        }),
+        OutputPulseSequencer().sample(
+          OutputFrame(1, {
+            'A': {
+              'intensity': 90,
+              'enabled': true,
+              'waveformId': waveforms.first.id,
+              'frequencyMs': frequencyMs,
+              'waveformIntensity': 100,
+            },
+            'B': {
+              'intensity': 0,
+              'enabled': false,
+              'waveformId': waveforms[1].id,
+            },
+          }),
+        ),
         forceStrength: true,
       );
     }

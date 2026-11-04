@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dglab_gamepad/control/models.dart';
+import 'package:dglab_gamepad/control/output_waveform_trace.dart';
 import 'package:dglab_gamepad/coyote/coyote_controller.dart';
 import 'package:dglab_gamepad/coyote/coyote_transport.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
@@ -220,6 +221,174 @@ void main() {
     );
     expect(controller.status, CoyoteStatus.error);
     link.hold!.complete();
+  });
+
+  void timingTest(
+    String description,
+    Future<void> Function(
+      WidgetTester,
+      CoyoteController,
+      FakeTransport,
+      OutputWaveformTrace,
+    )
+    body,
+  ) {
+    testWidgets(description, (tester) async {
+      final transport = FakeTransport();
+      final controller = CoyoteController(
+        transport: transport,
+        setBackgroundActive: (_) async {},
+      );
+      final trace = OutputWaveformTrace(clock: controller.pulseClock);
+      try {
+        await body(tester, controller, transport, trace);
+      } finally {
+        trace.dispose();
+        controller.dispose();
+      }
+    });
+  }
+
+  Iterable<(num, num)> values(Iterable<PulseSample> samples) =>
+      samples.map((sample) => (sample.frequency, sample.strength));
+
+  timingTest('refresh and ack timeout stay on the shared 100ms clock', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    expect(link.writes, hasLength(1));
+    controller.accept(frame(40));
+
+    for (var tick = 0; tick < 10; tick++) {
+      for (var i = 0; i < 20; i++) {
+        controller.flushLatest();
+      }
+      await tester.pump(const Duration(milliseconds: 99));
+      expect(link.writes, hasLength(tick + 1));
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(link.writes, hasLength(tick + 2));
+      final packet = link.writes.last;
+      expect(
+        values(trace.samplesFor('A').skip(tick * 4)),
+        values(decodePulseBytes(packet.sublist(4, 12))),
+      );
+    }
+    expect(link.writes.last[2], 40);
+    expect(
+      link.writes.skip(1).where((packet) => packet[1] >> 4 != 0),
+      isNotEmpty,
+    );
+  });
+
+  timingTest('an unacknowledged strength is retried on a regular tick', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    controller.accept(frame(50));
+    for (var i = 0; i < 16; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(link.writes, hasLength(17));
+    final strengthWrites = link.writes
+        .where((packet) => packet[1] >> 4 != 0)
+        .toList();
+    expect(strengthWrites.length, greaterThanOrEqualTo(3));
+    expect(strengthWrites.skip(1).map((packet) => packet[2]), everyElement(50));
+  });
+
+  timingTest('offline preview and BLE share phase across a connection', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    controller.accept(frame(60));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(trace.samplesFor('A'), hasLength(20));
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    link.notifyController.add([0xB1, link.writes.single[1] >> 4, 0, 0]);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(link.writes, hasLength(2));
+    expect(
+      values(decodePulseBytes(link.writes.last.sublist(4, 12))),
+      values(trace.samplesFor('A').skip(20)),
+    );
+    expect(link.writes.last.sublist(4, 12), [
+      for (var i = 0; i < 8; i++)
+        int.parse(
+          waveforms.first.pulseData[5].substring(i * 2, i * 2 + 2),
+          radix: 16,
+        ),
+    ]);
+  });
+
+  timingTest('a delayed write skips pulses without a catch-up burst', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    controller.accept(frame(40));
+    link.hold = Completer<void>();
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(link.writes, hasLength(2));
+    link.hold!.complete();
+    link.hold = null;
+    await tester.pump();
+    expect(link.writes, hasLength(2));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(link.writes, hasLength(3));
+    expect(
+      values(decodePulseBytes(link.writes.last.sublist(4, 12))),
+      values(trace.samplesFor('A').skip(12)),
+    );
+  });
+
+  timingTest('emergency stop writes zero immediately between pulses', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    link.notifyController.add([0xB1, link.writes.single[1] >> 4, 0, 0]);
+    controller.accept(frame(40));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(link.writes.last[2], 40);
+    await tester.pump(const Duration(milliseconds: 50));
+    await controller.emergencyStop();
+    expect(link.writes, hasLength(3));
+    expect(link.writes.last.sublist(2, 4), [0, 0]);
+    expect(link.writes.last.sublist(4, 12), [10, 10, 10, 10, 0, 0, 0, 0]);
+    expect(trace.samplesFor('A'), hasLength(4));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(link.writes, hasLength(4));
+    expect(link.writes.last.sublist(2, 4), [0, 0]);
+    expect(
+      trace.samplesFor('A').skip(4),
+      everyElement(const PulseSample(10, 0)),
+    );
   });
 }
 

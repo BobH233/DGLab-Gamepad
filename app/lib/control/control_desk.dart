@@ -14,10 +14,10 @@ import 'pulse_import.dart';
 class ControlDesk extends ChangeNotifier {
   final InputMonitor monitor;
   final CoyoteController coyote;
-  final OutputWaveformTrace waveformTrace;
+  late final OutputWaveformTrace waveformTrace;
   final PreviewOutputSink output = PreviewOutputSink();
   late final ControlEngine engine = ControlEngine(
-    output: _ControlOutput(output, waveformTrace, coyote),
+    output: _ControlOutput(output, coyote),
   );
   final Map<String, ActionDefinition> actions = {};
   List<Binding> bindings = [];
@@ -49,12 +49,9 @@ class ControlDesk extends ChangeNotifier {
   String? error;
   String? persistenceError;
   final List<String> loadWarnings = [];
-  ControlDesk(
-    this.monitor, {
-    CoyoteController? coyote,
-    OutputWaveformTrace? waveformTrace,
-  }) : coyote = coyote ?? CoyoteController(),
-       waveformTrace = waveformTrace ?? OutputWaveformTrace() {
+  ControlDesk(this.monitor, {CoyoteController? coyote})
+    : coyote = coyote ?? CoyoteController() {
+    waveformTrace = OutputWaveformTrace(clock: this.coyote.pulseClock);
     this.coyote.addListener(_notify);
     this.coyote.onUnexpectedDisconnect = _handleCoyoteLost;
   }
@@ -903,13 +900,11 @@ class ControlDesk extends ChangeNotifier {
 
 class _ControlOutput implements OutputSink {
   final PreviewOutputSink preview;
-  final OutputWaveformTrace waveformTrace;
   final CoyoteController coyote;
-  _ControlOutput(this.preview, this.waveformTrace, this.coyote);
+  _ControlOutput(this.preview, this.coyote);
 
   @override
   void accept(OutputFrame frame) {
-    waveformTrace.accept(frame);
     preview.accept(frame);
     coyote.accept(frame);
   }
