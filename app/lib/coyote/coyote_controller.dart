@@ -38,14 +38,25 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     CoyoteTransport? transport,
     Future<BluetoothPermissionState> Function()? requestPermissions,
     Future<void> Function(bool connected)? setBackgroundActive,
+    ValueListenable<KeepAliveState>? keepAlive,
   }) : _transport = transport ?? ReactiveBleCoyoteTransport(),
        _requestPermissions = requestPermissions ?? BluetoothPermissions.request,
        _setBackgroundActive =
-           setBackgroundActive ?? BackgroundRuntime.setBleConnected;
+           setBackgroundActive ?? BackgroundRuntime.setBleConnected,
+       _keepAlive = keepAlive ?? BackgroundRuntime.keepAlive {
+    _keepAlive.addListener(_notify);
+  }
 
   final CoyoteTransport _transport;
   final Future<BluetoothPermissionState> Function() _requestPermissions;
   final Future<void> Function(bool connected) _setBackgroundActive;
+  final ValueListenable<KeepAliveState> _keepAlive;
+
+  /// True while connected but the platform keep-alive has been taken away
+  /// (iOS audio interruption). Output continues in the foreground, but the
+  /// app may be suspended in the background until it recovers.
+  bool get backgroundAtRisk =>
+      connected && _keepAlive.value == KeepAliveState.interrupted;
 
   CoyoteStatus status = CoyoteStatus.disconnected;
   String? error;
@@ -451,6 +462,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   @override
   void dispose() {
+    _keepAlive.removeListener(_notify);
     _disposed = true;
     _session++;
     _cancelConnectionReady();

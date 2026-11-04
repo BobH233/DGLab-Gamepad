@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import 'package:dglab_gamepad/coyote/coyote_controller.dart';
+import 'package:dglab_gamepad/platform/background_runtime.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
 import 'package:dglab_gamepad/control/control_desk.dart';
 import 'package:dglab_gamepad/control/control_state.dart';
@@ -459,6 +460,35 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('warns while the iOS keep-alive is interrupted', (tester) async {
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final keepAlive = ValueNotifier(KeepAliveState.running);
+    final coyote = _FakeCoyote(keepAlive: keepAlive)..connectedForTest = true;
+    final desk = ControlDesk(monitor, coyote: coyote);
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(MaterialApp(home: ControlHome(desk: desk)));
+    final warning = find.textContaining('后台保活暂时中断');
+    expect(warning, findsNothing);
+
+    keepAlive.value = KeepAliveState.interrupted;
+    await tester.pump();
+    expect(warning, findsOneWidget);
+
+    keepAlive.value = KeepAliveState.running;
+    await tester.pump();
+    expect(warning, findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
+
   test('active touch effects refresh when channel controls change', () async {
     final stream = StreamController<Map<String, dynamic>>();
     final monitor = InputMonitor(
@@ -797,8 +827,14 @@ class _MemoryStore extends ControlStore {
 }
 
 class _FakeCoyote extends CoyoteController {
+  _FakeCoyote({super.keepAlive});
+
   int scanCount = 0;
   int flushes = 0;
+  bool connectedForTest = false;
+
+  @override
+  bool get connected => connectedForTest || super.connected;
 
   @override
   Future<void> scan() async {

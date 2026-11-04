@@ -4,6 +4,8 @@ import 'package:dglab_gamepad/control/models.dart';
 import 'package:dglab_gamepad/control/output_waveform_trace.dart';
 import 'package:dglab_gamepad/coyote/coyote_controller.dart';
 import 'package:dglab_gamepad/coyote/coyote_transport.dart';
+import 'package:dglab_gamepad/platform/background_runtime.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -105,6 +107,43 @@ void main() {
   });
 
   tearDown(() => controller.dispose());
+
+  test('keep-alive state parses platform values defensively', () {
+    expect(KeepAliveState.parse('running'), KeepAliveState.running);
+    expect(KeepAliveState.parse('interrupted'), KeepAliveState.interrupted);
+    expect(KeepAliveState.parse('idle'), KeepAliveState.idle);
+    expect(KeepAliveState.parse(null), KeepAliveState.unsupported);
+    expect(KeepAliveState.parse('future'), KeepAliveState.unsupported);
+  });
+
+  test('an interrupted keep-alive is a risk only while connected', () async {
+    final keepAlive = ValueNotifier(KeepAliveState.running);
+    final watched = CoyoteController(
+      transport: transport,
+      requestPermissions: () async =>
+          (granted: true, locationServicesRequired: false),
+      setBackgroundActive: (_) async {},
+      keepAlive: keepAlive,
+    );
+    addTearDown(watched.dispose);
+    var notifications = 0;
+    watched.addListener(() => notifications++);
+
+    keepAlive.value = KeepAliveState.interrupted;
+    expect(watched.backgroundAtRisk, isFalse);
+
+    await watched.connect(device);
+    expect(watched.backgroundAtRisk, isTrue);
+
+    final before = notifications;
+    keepAlive.value = KeepAliveState.running;
+    expect(notifications, greaterThan(before));
+    expect(watched.backgroundAtRisk, isFalse);
+
+    keepAlive.value = KeepAliveState.interrupted;
+    await watched.disconnect();
+    expect(watched.backgroundAtRisk, isFalse);
+  });
 
   test('only an unexpected drop of a live link reports a loss', () async {
     var losses = 0;

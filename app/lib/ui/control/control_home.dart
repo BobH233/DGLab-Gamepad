@@ -405,6 +405,21 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                             style: const TextStyle(color: Palette.yellow),
                           ),
                         ),
+                      if (desk.coyote.backgroundAtRisk)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            '系统音频被占用（如通话或 Siri），后台保活暂时中断。'
+                            '留在本页可继续输出；切到后台可能暂停发送，结束后会自动恢复。',
+                            style: TextStyle(
+                              color: Palette.yellow,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
                       if (desk.persistenceError != null)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
