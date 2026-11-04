@@ -269,6 +269,13 @@ void main() {
     final rail = find.byKey(const ValueKey('compact-side-navigation'));
     expect(rail, findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
+    final safeArea = tester.widget<SafeArea>(
+      find.byKey(const ValueKey('control-home-safe-area')),
+    );
+    expect(safeArea.top, isTrue);
+    expect(safeArea.bottom, isFalse);
+    expect(safeArea.left, isFalse);
+    expect(safeArea.right, isFalse);
     final railRect = tester.getRect(rail);
     expect(railRect.width, lessThanOrEqualTo(66));
     expect(railRect.height, lessThan(200));

@@ -238,6 +238,8 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
         listenable: desk,
         builder: (context, _) => Scaffold(
           body: SafeArea(
+            key: const ValueKey('control-home-safe-area'),
+            bottom: !compactLandscape,
             left: !compactLandscape,
             right: !compactLandscape,
             child: Stack(
