@@ -28,6 +28,11 @@
 	<string>用于连接 DG-LAB 郊狼设备并发送控制指令。</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>用于连接 DG-LAB 郊狼设备并发送控制指令。</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

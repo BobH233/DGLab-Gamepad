@@ -9,6 +9,7 @@ import 'control_engine.dart';
 import 'control_store.dart';
 import 'models.dart';
 import 'output_waveform_trace.dart';
+import 'pulse_import.dart';
 
 class ControlDesk extends ChangeNotifier {
   final InputMonitor monitor;
@@ -20,6 +21,7 @@ class ControlDesk extends ChangeNotifier {
   );
   final Map<String, ActionDefinition> actions = {};
   List<Binding> bindings = [];
+  List<Waveform> customWaveforms = [];
   final Stopwatch clock = Stopwatch()..start();
   StreamSubscription<dynamic>? _subscription;
   Timer? _timer;
@@ -93,6 +95,8 @@ class ControlDesk extends ChangeNotifier {
 
   Future<void> initialize({ControlStore? storage, AssetBundle? assets}) async {
     var migratedTouchBinding = false;
+    setCustomWaveformCatalog(const []);
+    customWaveforms = [];
     try {
       for (final name in [
         'boost',
@@ -121,6 +125,29 @@ class ControlDesk extends ChangeNotifier {
         final saved = await store!.read();
         if (_disposed) return;
         if (saved != null) {
+          final restoredWaveforms = <Waveform>[];
+          final waveformIds = <String>{};
+          var totalFrames = 0;
+          for (final item in (saved['customWaveforms'] as List? ?? []).take(
+            32,
+          )) {
+            try {
+              final waveform = Waveform.fromStorage(item);
+              if (builtInWaveforms.any((item) => item.id == waveform.id) ||
+                  !waveformIds.add(waveform.id)) {
+                throw const FormatException('波形 ID 重复');
+              }
+              totalFrames += waveform.pulseData.length;
+              if (totalFrames > 32768) {
+                throw const FormatException('自定义波形总长度超出限制');
+              }
+              restoredWaveforms.add(waveform);
+            } catch (e) {
+              loadWarnings.add('波形未载入：$e');
+            }
+          }
+          customWaveforms = restoredWaveforms;
+          setCustomWaveformCatalog(customWaveforms);
           for (final source in (saved['scripts'] as List? ?? []).take(32)) {
             try {
               final runtime = ActionRuntime(source as String);
@@ -255,9 +282,12 @@ class ControlDesk extends ChangeNotifier {
       engine.configure(bindings, actions);
       _savedChannelKey = _channelKey;
       _subscription = monitor.frames.listen((frame) {
-        if (frame.status == InputStatus.paused ||
-            frame.status == InputStatus.error ||
-            frame.status == InputStatus.stale) {
+        final preserveOutput =
+            frame.status == InputStatus.paused &&
+            monitor.lifecycleSuspended;
+        if (frame.status == InputStatus.error ||
+            frame.status == InputStatus.stale ||
+            (frame.status == InputStatus.paused && !preserveOutput)) {
           engine.stopAll();
         }
         engine.input(
@@ -265,6 +295,7 @@ class ControlDesk extends ChangeNotifier {
           live: !editing && frame.status == InputStatus.live,
           deviceId: frame.deviceId,
           raw: monitor.session.raw,
+          preserveOutput: preserveOutput,
         );
         _persistChanges();
         _notify();
@@ -367,9 +398,12 @@ class ControlDesk extends ChangeNotifier {
     final channelKey = _channelKey;
     try {
       await store?.save({
-        'version': 4,
+        'version': 5,
         'autoScrollToAction': autoScrollToAction,
         'bindings': bindings.map((b) => b.toJson()).toList(),
+        'customWaveforms': customWaveforms
+            .map((waveform) => waveform.toJson())
+            .toList(),
         'scripts': actions.values
             .where((a) => !a.builtin)
             .map((a) => a.source)
@@ -656,12 +690,64 @@ class ControlDesk extends ChangeNotifier {
   }
 
   void chooseWaveform(int index) {
+    if (index < 0 || index >= waveforms.length) {
+      throw RangeError.index(index, waveforms);
+    }
     final c = engine.state.channels[engine.state.selected]!;
     c.cursor = index;
     c.waveform = waveforms[index].id;
     engine.publish();
     _notify();
     unawaited(save());
+  }
+
+  Future<Waveform> importPulseWaveform(
+    String source, {
+    required String name,
+  }) async {
+    if (customWaveforms.length >= 32) {
+      throw const FormatException('最多导入 32 个自定义波形');
+    }
+    final parsed = parsePulseWaveform(source, name: name);
+    for (final existing in customWaveforms) {
+      if (listEquals(existing.pulseData, parsed.pulseData)) {
+        _applyWaveform(existing.id);
+        await save();
+        return existing;
+      }
+    }
+    final baseId = parsed.id;
+    var id = baseId;
+    var suffix = 2;
+    while (waveforms.any((waveform) => waveform.id == id)) {
+      id = '$baseId-$suffix';
+      suffix++;
+    }
+    final waveform = Waveform(
+      id,
+      parsed.name,
+      parsed.pulseData,
+      isCustom: true,
+    );
+    final next = [waveform, ...customWaveforms];
+    setCustomWaveformCatalog(next);
+    customWaveforms = next;
+    _applyWaveform(id);
+    await save();
+    return waveform;
+  }
+
+  void _applyWaveform(String id) {
+    final channel = engine.state.channels[engine.state.selected]!;
+    channel.waveform = id;
+    channel.cursor = waveforms.indexWhere((waveform) => waveform.id == id);
+    for (final item in engine.state.channels.values) {
+      item.cursor = waveforms.indexWhere(
+        (waveform) => waveform.id == item.waveform,
+      );
+    }
+    engine.publish();
+    _notify();
   }
 
   void focusWaveform(int index) {
@@ -673,6 +759,30 @@ class ControlDesk extends ChangeNotifier {
     engine.stopAll();
     unawaited(coyote.emergencyStop());
     _notify();
+  }
+
+  bool get anyChannelEnabled => channelIds.any(
+    (id) =>
+        engine.state.enabled(id) ||
+        (engine.state.touchReadout(id)?.intensity ?? 0) > 0,
+  );
+
+  void startAll() {
+    engine.cancel();
+    for (final channel in engine.state.channels.values) {
+      channel.enabled = true;
+    }
+    engine.publish();
+    coyote.flushLatest();
+    _notify();
+  }
+
+  void toggleAllChannels() {
+    if (anyChannelEnabled) {
+      stopAll();
+    } else {
+      startAll();
+    }
   }
 
   void suspendBindings() {

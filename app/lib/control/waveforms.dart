@@ -9,11 +9,56 @@ class Waveform {
   final String name;
   final List<String> pulseData;
   final List<PulseSample> samples;
+  final bool isCustom;
 
-  Waveform(this.id, this.name, List<String> pulseData)
+  Waveform(this.id, this.name, List<String> pulseData, {this.isCustom = false})
     : pulseData = List.unmodifiable(pulseData),
       samples = List.unmodifiable(_decode(pulseData));
+
+  factory Waveform.fromStorage(Object? value) {
+    if (value is! Map) throw const FormatException('自定义波形数据无效');
+    final data = Map<String, dynamic>.from(value);
+    final id = data['id'];
+    final name = data['name'];
+    final frames = data['pulseData'];
+    if (id is! String ||
+        !RegExp(r'^[0-9a-f]{8}(?:-[0-9]+)?$').hasMatch(id) ||
+        name is! String ||
+        name.trim().isEmpty ||
+        name.runes.length > 40 ||
+        frames is! List ||
+        frames.isEmpty ||
+        frames.length > maxImportedWaveformFrames) {
+      throw const FormatException('自定义波形数据无效');
+    }
+    final pulseData = frames.map((frame) {
+      if (frame is! String ||
+          frame.length != 16 ||
+          !RegExp(r'^[0-9A-Fa-f]{16}$').hasMatch(frame)) {
+        throw const FormatException('自定义波形帧无效');
+      }
+      final normalized = frame.toUpperCase();
+      final bytes = [
+        for (var i = 0; i < 8; i++)
+          int.parse(normalized.substring(i * 2, i * 2 + 2), radix: 16),
+      ];
+      if (bytes.take(4).any((value) => value > 240) ||
+          bytes.skip(4).any((value) => value > 100)) {
+        throw const FormatException('自定义波形数值超出范围');
+      }
+      return normalized;
+    }).toList();
+    return Waveform(id, name.trim(), pulseData, isCustom: true);
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'pulseData': pulseData,
+  };
 }
+
+const maxImportedWaveformFrames = 8192;
 
 List<PulseSample> _decode(List<String> frames) {
   final result = <PulseSample>[];
@@ -65,7 +110,7 @@ String canonicalWaveformId(Object? value) {
   return _legacyWaveformIds[value] ?? value;
 }
 
-final waveforms = <Waveform>[
+final builtInWaveforms = <Waveform>[
   Waveform('d6f83af0', '呼吸', const [
     '0A0A0A0A00000000',
     '0A0A0A0A14141414',
@@ -546,3 +591,30 @@ final waveforms = <Waveform>[
     '0A0A0A0A00000000',
   ]),
 ];
+
+final waveforms = <Waveform>[...builtInWaveforms];
+
+void setCustomWaveformCatalog(Iterable<Waveform> custom) {
+  final builtInIds = builtInWaveforms.map((waveform) => waveform.id).toSet();
+  final customIds = <String>{};
+  final ordered = <Waveform>[];
+  var totalFrames = 0;
+  for (final waveform in custom) {
+    if (!waveform.isCustom ||
+        builtInIds.contains(waveform.id) ||
+        !customIds.add(waveform.id) ||
+        waveform.pulseData.isEmpty ||
+        waveform.pulseData.length > maxImportedWaveformFrames) {
+      throw const FormatException('自定义波形目录无效');
+    }
+    totalFrames += waveform.pulseData.length;
+    if (totalFrames > 32768) {
+      throw const FormatException('自定义波形总长度超出限制');
+    }
+    ordered.add(waveform);
+  }
+  waveforms
+    ..clear()
+    ..addAll(ordered)
+    ..addAll(builtInWaveforms);
+}

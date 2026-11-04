@@ -67,10 +67,10 @@ void main() {
           boostAmount: 15,
         );
         monitor.didChangeAppLifecycleState(AppLifecycleState.inactive);
-        expect(desk.engine.state.enabled('A'), isFalse);
+        expect(desk.engine.state.enabled('A'), isTrue);
         await Future<void>.delayed(const Duration(milliseconds: 750));
         final saved = await store.read();
-        expect(saved!['version'], 4);
+        expect(saved!['version'], 5);
         expect(saved['autoScrollToAction'], isFalse);
         expect(saved['channels']['A']['base'], 5);
         expect(saved['channels']['A']['linear']['amount'], 75);
@@ -102,6 +102,43 @@ void main() {
       }
     },
   );
+  test('imported pulse persists above built-ins and restores selection', () async {
+    final dir = Directory.systemTemp.createTempSync('dglab-pulse-store-');
+    final store = ControlStore(File('${dir.path}/profile.json'));
+    final monitor = InputMonitor(
+      events: const Stream.empty(),
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor);
+    final restored = ControlDesk(monitor);
+    try {
+      await desk.initialize(storage: store, assets: _Assets());
+      final imported = await desk.importPulseWaveform(
+        'Dungeonlab+pulse:0,1,16=0,0,0,1,1/0-1,100-1',
+        name: '导入波形',
+      );
+
+      expect(waveforms.first.id, imported.id);
+      expect(waveforms.first.isCustom, isTrue);
+      expect(desk.customWaveforms.single.id, imported.id);
+      expect(desk.engine.state.channels['A']!.waveform, imported.id);
+      final saved = await store.read();
+      expect(saved!['version'], 5);
+      expect(saved['customWaveforms'], hasLength(1));
+
+      await restored.initialize(storage: store, assets: _Assets());
+      expect(restored.ready, isTrue, reason: restored.error);
+      expect(waveforms.first.id, imported.id);
+      expect(restored.customWaveforms.single.name, '导入波形');
+      expect(restored.engine.state.channels['A']!.waveform, imported.id);
+      expect(restored.engine.state.channels['A']!.cursor, 0);
+    } finally {
+      desk.dispose();
+      restored.dispose();
+      monitor.dispose();
+      await dir.delete(recursive: true);
+    }
+  });
   test(
     'bad restored bindings are skipped without blocking valid ones',
     () async {
@@ -147,7 +184,7 @@ void main() {
       expect(desk.ready, isTrue, reason: desk.error);
       final touch = desk.bindings.singleWhere((b) => b.input == 'north');
       expect(touch.action, 'builtin.toggleTouch');
-      expect((await store.read())!['version'], 4);
+      expect((await store.read())!['version'], 5);
     } finally {
       desk.dispose();
       monitor.dispose();
@@ -201,7 +238,7 @@ void main() {
       );
       await desk.save();
       final saved = await store.read();
-      expect(saved!['version'], 4);
+      expect(saved!['version'], 5);
       expect(saved['channels']['A']['linear']['amount'], 55);
       expect(saved['channels']['A']['boost']['amount'], 42);
     } finally {

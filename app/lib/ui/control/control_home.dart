@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import '../../control/control_desk.dart';
 import '../../control/control_state.dart';
 import '../../control/models.dart';
+import '../../control/pulse_import.dart';
 import '../palette.dart';
 import '../monitor_screen.dart';
 import 'bindings_page.dart';
@@ -30,10 +32,7 @@ class _ControlHomeState extends State<ControlHome> {
   final Map<String, GlobalKey> _channelKeys = {
     for (final id in channelIds) id: GlobalKey(),
   };
-  final List<GlobalKey> _waveformKeys = List.generate(
-    waveforms.length,
-    (_) => GlobalKey(),
-  );
+  final Map<String, GlobalKey> _waveformKeys = {};
   ControlDesk get desk => widget.desk;
 
   @override
@@ -122,7 +121,10 @@ class _ControlHomeState extends State<ControlHome> {
         : target.area;
     final key = switch (area) {
       ControlFocusArea.channel => _channelKeys[target.channel],
-      ControlFocusArea.waveform => _waveformKeys[target.waveformIndex],
+      ControlFocusArea.waveform =>
+        target.waveformIndex >= 0 && target.waveformIndex < waveforms.length
+            ? _waveformKey(waveforms[target.waveformIndex].id)
+            : null,
     };
     final targetContext = key?.currentContext;
     if (targetContext == null) return;
@@ -154,6 +156,50 @@ class _ControlHomeState extends State<ControlHome> {
       desk.beginEdit();
     }
     setState(() => page = value);
+  }
+
+  GlobalKey _waveformKey(String id) =>
+      _waveformKeys.putIfAbsent(id, GlobalKey.new);
+
+  Future<void> _importPulse() async {
+    try {
+      final file = await openFile(
+        acceptedTypeGroups: [
+          const XTypeGroup(
+            label: 'DG-LAB pulse',
+            extensions: ['pulse'],
+            mimeTypes: ['text/plain'],
+            uniformTypeIdentifiers: ['public.data'],
+          ),
+        ],
+      );
+      if (file == null) return;
+      if (await file.length() > maxPulseFileBytes) {
+        throw const FormatException('波形文件不能超过 512 KB');
+      }
+      final source = await file.readAsString();
+      if (!mounted) return;
+      final waveform = await showDialog<Waveform>(
+        context: context,
+        builder: (_) => _PulseImportDialog(
+          desk: desk,
+          source: source,
+          initialName: pulseNameFromFile(file.name),
+        ),
+      );
+      if (waveform != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导入 ${waveform.name}')));
+      }
+    } catch (e) {
+      if (mounted) {
+        final message = e is FormatException ? e.message : e.toString();
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+    }
   }
 
   @override
@@ -240,15 +286,25 @@ class _ControlHomeState extends State<ControlHome> {
                   const SizedBox(width: 4),
                   if (MediaQuery.sizeOf(context).width < 360)
                     IconButton(
-                      tooltip: '全部停止',
-                      onPressed: desk.stopAll,
-                      icon: const Icon(Icons.stop_rounded, size: 18),
+                      tooltip: desk.anyChannelEnabled ? '全部停止' : '全部启动',
+                      onPressed: desk.toggleAllChannels,
+                      icon: Icon(
+                        desk.anyChannelEnabled
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 18,
+                      ),
                     )
                   else
                     OutlinedButton.icon(
-                      onPressed: desk.stopAll,
-                      icon: const Icon(Icons.stop_rounded, size: 18),
-                      label: const Text('全部停止'),
+                      onPressed: desk.toggleAllChannels,
+                      icon: Icon(
+                        desk.anyChannelEnabled
+                            ? Icons.stop_rounded
+                            : Icons.play_arrow_rounded,
+                        size: 18,
+                      ),
+                      label: Text(desk.anyChannelEnabled ? '全部停止' : '全部启动'),
                     ),
                 ],
               ),
@@ -758,6 +814,11 @@ class _ControlHomeState extends State<ControlHome> {
               '$selected 通道',
               style: const TextStyle(color: Palette.yellow, fontSize: 12),
             ),
+            OutlinedButton.icon(
+              onPressed: _importPulse,
+              icon: const Icon(Icons.file_open_outlined, size: 16),
+              label: const Text('导入 .pulse'),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -789,7 +850,7 @@ class _ControlHomeState extends State<ControlHome> {
         current = w.id == channel.waveform,
         focused = i == channel.cursor;
     return InkWell(
-      key: _waveformKeys[i],
+      key: _waveformKey(w.id),
       onTap: () => desk.chooseWaveform(i),
       onFocusChange: (focus) {
         if (focus) desk.focusWaveform(i);
@@ -814,17 +875,31 @@ class _ControlHomeState extends State<ControlHome> {
                 Expanded(
                   child: Text(
                     w.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 13,
                       color: current ? Palette.yellow : Palette.text,
                     ),
                   ),
                 ),
+                if (w.isCustom)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Icon(
+                      Icons.upload_file_rounded,
+                      size: 14,
+                      color: Palette.yellow,
+                    ),
+                  ),
                 if (current)
-                  const Icon(
-                    Icons.check_rounded,
-                    size: 15,
-                    color: Palette.yellow,
+                  const Padding(
+                    padding: EdgeInsets.only(left: 6),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 15,
+                      color: Palette.yellow,
+                    ),
                   ),
               ],
             ),
@@ -840,6 +915,94 @@ class _ControlHomeState extends State<ControlHome> {
       ),
     );
   }
+}
+
+class _PulseImportDialog extends StatefulWidget {
+  final ControlDesk desk;
+  final String source;
+  final String initialName;
+  const _PulseImportDialog({
+    required this.desk,
+    required this.source,
+    required this.initialName,
+  });
+  @override
+  State<_PulseImportDialog> createState() => _PulseImportDialogState();
+}
+
+class _PulseImportDialogState extends State<_PulseImportDialog> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initialName,
+  );
+  String? error;
+  bool busy = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _install() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final waveform = await widget.desk.importPulseWaveform(
+        widget.source,
+        name: _name.text,
+      );
+      if (mounted) Navigator.pop(context, waveform);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = e is FormatException ? e.message : e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Palette.surface,
+    title: const Text(
+      '导入波形',
+      style: TextStyle(color: Palette.yellow, fontSize: 20),
+    ),
+    content: SizedBox(
+      width: 360,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _name,
+            autofocus: true,
+            maxLength: 40,
+            textInputAction: TextInputAction.done,
+            onSubmitted: busy ? null : (_) => _install(),
+            decoration: const InputDecoration(labelText: '波形名称'),
+          ),
+          if (error != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                error!,
+                style: const TextStyle(color: Palette.yellow, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: busy ? null : () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(onPressed: busy ? null : _install, child: const Text('导入')),
+    ],
+  );
 }
 
 class _RepeatButton extends StatefulWidget {

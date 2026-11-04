@@ -541,4 +541,25 @@ void main() {
     expect(engine.state.offset('A'), 30);
     expect(engine.state.enabled('A'), isFalse);
   });
+  test('lifecycle input suspension preserves channel output', () {
+    configure([
+      binding('leftShoulder', 'boost', {'target': 'A'}),
+    ]);
+    engine.state.channels['A']!
+      ..base = 80
+      ..enabled = true;
+    input({Control.leftShoulder: 1});
+    expect(engine.state.frame().channels['A']!['intensity'], 110);
+
+    engine.input(
+      GamepadState.neutral,
+      live: false,
+      deviceId: 'pad',
+      preserveOutput: true,
+    );
+
+    expect(engine.state.enabled('A'), isTrue);
+    expect(engine.state.overlays, isEmpty);
+    expect(engine.state.frame().channels['A']!['intensity'], 80);
+  });
 }

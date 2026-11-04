@@ -28,6 +28,7 @@ class InputMonitor extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _watchdog;
   bool _paused = false;
   bool _foreground = true;
+  bool _lifecycleSuspended = false;
   bool _disposed = false;
   bool _notificationPending = false;
   String? error;
@@ -36,6 +37,7 @@ class InputMonitor extends ChangeNotifier with WidgetsBindingObserver {
   int updatesPerSecond = 0;
   Duration _rateTime = Duration.zero;
   bool get paused => _paused;
+  bool get lifecycleSuspended => _lifecycleSuspended;
 
   InputMonitor({
     Stream<Map<String, dynamic>>? events,
@@ -137,6 +139,7 @@ class InputMonitor extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _foreground = state == AppLifecycleState.resumed;
+    _lifecycleSuspended = !_foreground;
     session.setEnabled(!_paused && _foreground);
     _emitInput();
     _refresh();

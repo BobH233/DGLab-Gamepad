@@ -84,10 +84,14 @@ class ControlEngine {
     required bool live,
     required String? deviceId,
     GamepadState? raw,
+    bool preserveOutput = false,
   }) {
     if (!live || (_deviceId != null && deviceId != _deviceId)) {
-      if (_live || state.overlays.isNotEmpty) stopAll();
-      _live = false;
+      if (preserveOutput) {
+        _cancelSlots();
+      } else if (_live || state.overlays.isNotEmpty) {
+        stopAll();
+      }
     }
     _deviceId = deviceId;
     if (!live) {
@@ -204,6 +208,11 @@ class ControlEngine {
   }
 
   void cancel() {
+    _cancelSlots();
+    publish();
+  }
+
+  void _cancelSlots() {
     state.overlays.clear();
     state.clearTouchPoint();
     for (final slot in _slots.values) {
@@ -219,11 +228,10 @@ class ControlEngine {
     _rawInput = GamepadState.neutral;
     _live = false;
     _lastTick = null;
-    publish();
   }
 
   void stopAll() {
-    cancel();
+    _cancelSlots();
     state.stop();
     publish();
   }

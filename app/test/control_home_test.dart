@@ -144,6 +144,22 @@ void main() {
       await tester.pump();
       expect(desk.engine.state.enabled('A'), isFalse);
       expect(desk.engine.state.channels['A']!.base, heldValue);
+      final startAll = find.text('全部启动').evaluate().isEmpty
+          ? find.byTooltip('全部启动')
+          : find.text('全部启动');
+      expect(startAll, findsOneWidget);
+      await tester.tap(startAll);
+      await tester.pump();
+      expect(desk.engine.state.enabled('A'), isTrue);
+      expect(desk.engine.state.enabled('B'), isTrue);
+      final stopAll = find.text('全部停止').evaluate().isEmpty
+          ? find.byTooltip('全部停止')
+          : find.text('全部停止');
+      expect(stopAll, findsOneWidget);
+      await tester.tap(stopAll);
+      await tester.pump();
+      expect(desk.engine.state.enabled('A'), isFalse);
+      expect(desk.engine.state.enabled('B'), isFalse);
       await tester.ensureVisible(find.text('B 通道').first);
       await tester.tap(find.text('B 通道').first);
       await tester.pump();

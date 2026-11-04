@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 import '../control/models.dart';
+import '../platform/background_runtime.dart';
 import 'coyote_protocol.dart';
 
 enum CoyoteStatus { disconnected, scanning, connecting, connected, error }
@@ -228,6 +229,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       _forceStrength = true;
       status = CoyoteStatus.connected;
       error = null;
+      await BackgroundRuntime.setBleConnected(true);
       _pulseTimer = Timer.periodic(
         coyotePulseInterval,
         (_) => unawaited(_sendNext()),
@@ -389,6 +391,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _awaitingSequence = null;
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
+    unawaited(BackgroundRuntime.setBleConnected(false));
     _notify();
   }
 
@@ -399,6 +402,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _scanSubscription = null;
     status = CoyoteStatus.error;
     error = message;
+    unawaited(BackgroundRuntime.setBleConnected(false));
     _notify();
   }
 
@@ -425,6 +429,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     unawaited(_scanSubscription?.cancel());
     unawaited(_connectionSubscription?.cancel());
     unawaited(_notifySubscription?.cancel());
+    unawaited(BackgroundRuntime.setBleConnected(false));
     super.dispose();
   }
 }
