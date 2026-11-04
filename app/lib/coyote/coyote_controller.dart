@@ -87,6 +87,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   static const maxConsecutiveWriteFailures = 5;
   static const writeTimeout = Duration(milliseconds: 400);
 
+  /// Called when an established link drops without the user asking for it.
+  /// Output state upstream should be stopped so reconnecting is not a
+  /// silent resume at the previous strength.
+  VoidCallback? onUnexpectedDisconnect;
+
   bool get connected => status == CoyoteStatus.connected;
   bool get scanning => status == CoyoteStatus.scanning;
   bool get connecting => status == CoyoteStatus.connecting;
@@ -383,6 +388,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   void _resetConnection([String? message]) {
+    final wasConnected = connected;
     _session++;
     _writing = false;
     _writeFailures = 0;
@@ -414,6 +420,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
     unawaited(_setBackgroundActive(false));
+    if (wasConnected && message != null) onUnexpectedDisconnect?.call();
     _notify();
   }
 

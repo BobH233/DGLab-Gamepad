@@ -103,6 +103,23 @@ void main() {
 
   tearDown(() => controller.dispose());
 
+  test('only an unexpected drop of a live link reports a loss', () async {
+    var losses = 0;
+    controller.onUnexpectedDisconnect = () => losses++;
+
+    await controller.connect(device);
+    await controller.disconnect();
+    expect(losses, 0);
+
+    await controller.connect(device);
+    transport.emit(
+      transport.connections.last,
+      DeviceConnectionState.disconnected,
+    );
+    await pumpEventQueue();
+    expect(losses, 1);
+  });
+
   test('unexpected disconnect releases the connection stream', () async {
     await controller.connect(device);
     expect(controller.connected, isTrue);

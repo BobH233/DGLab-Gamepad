@@ -39,7 +39,7 @@ Touch balance uses `BF` packets with soft limits left unchanged (`201, 201`), th
 - Connecting starts at zero strength and writes zero before the normal stream.
 - Disabled channels, all-stop, entering edit mode, lost gamepad input, app background and script faults produce zero output.
 - Active stop and disconnect write a blank waveform with zero strength before closing where the platform permits it.
-- Unexpected BLE disconnect stops the local 10Hz sender and clears the selected preview connection.
+- Unexpected BLE disconnect stops the local 10Hz sender and disables both channels, keeping their base strengths. Reconnecting therefore never resumes output on its own.
 - Each write has a 400ms timeout. A single failed or timed-out write keeps the session and forces absolute strengths on the next packet; five consecutive failures end the session.
 - Connection is manual on every launch; the app never auto-enables a channel.
 - Android keeps the link alive with a `connectedDevice` foreground service while connected. Home and Back both leave output running in the background. Removing the task from recents or any activity destruction ends the engine and stops the service with it (`stopWithTask="true"`, `START_NOT_STICKY`).

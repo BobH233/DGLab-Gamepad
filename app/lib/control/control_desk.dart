@@ -88,7 +88,15 @@ class ControlDesk extends ChangeNotifier {
   }) : coyote = coyote ?? CoyoteController(),
        waveformTrace = waveformTrace ?? OutputWaveformTrace() {
     this.coyote.addListener(_notify);
+    this.coyote.onUnexpectedDisconnect = _handleCoyoteLost;
   }
+
+  void _handleCoyoteLost() {
+    if (_disposed) return;
+    engine.stopAll();
+    _notify();
+  }
+
   void _notify() {
     if (!_disposed) notifyListeners();
   }
@@ -298,8 +306,7 @@ class ControlDesk extends ChangeNotifier {
       _savedChannelKey = _channelKey;
       _subscription = monitor.frames.listen((frame) {
         final preserveOutput =
-            frame.status == InputStatus.paused &&
-            monitor.lifecycleSuspended;
+            frame.status == InputStatus.paused && monitor.lifecycleSuspended;
         if (frame.status == InputStatus.error ||
             frame.status == InputStatus.stale ||
             (frame.status == InputStatus.paused && !preserveOutput)) {
@@ -918,6 +925,7 @@ class ControlDesk extends ChangeNotifier {
     if (ready && _channelKey != _savedChannelKey) unawaited(save());
     _subscription?.cancel();
     coyote.removeListener(_notify);
+    coyote.onUnexpectedDisconnect = null;
     coyote.dispose();
     waveformTrace.dispose();
     engine.dispose();
