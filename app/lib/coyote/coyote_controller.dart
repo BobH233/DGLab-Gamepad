@@ -63,7 +63,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   final OutputPulseClock pulseClock = OutputPulseClock();
   StreamSubscription<OutputPulseSnapshot>? _pulseSubscription;
   Timer? _batteryTimer;
-  Timer? _ackTimer;
   CoyoteLink? _link;
   CoyotePacketEncoder _encoder = CoyotePacketEncoder();
   bool _forceStrength = false;
@@ -75,7 +74,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   int? _desiredBalanceB;
   int? _sentBalanceA;
   int? _sentBalanceB;
-  int? _awaitingSequence;
 
   /// Incremented whenever a connection attempt starts or the link is torn
   /// down. An async step in [connect] that resumes under a different value
@@ -257,7 +255,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     try {
       final balanceA = _desiredBalanceA;
       final balanceB = _desiredBalanceB;
-      if (balanceA != null &&
+      if (!stop &&
+          pulse != null &&
+          balanceA != null &&
           balanceB != null &&
           (balanceA != _sentBalanceA || balanceB != _sentBalanceB)) {
         await link
@@ -278,18 +278,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         stop ? null : pulse,
         forceStrength: force,
         silence: stop,
-        allowStrengthChange: stop || _awaitingSequence == null,
       );
-      final sequence = packet[1] >> 4;
-      if (sequence != 0) {
-        _awaitingSequence = sequence;
-        _ackTimer?.cancel();
-        _ackTimer = Timer(const Duration(milliseconds: 700), () {
-          _awaitingSequence = null;
-          _ackTimer = null;
-          _forceStrength = true;
-        });
-      }
       await link.write(packet).timeout(writeTimeout);
       if (session == _session) _writeFailures = 0;
     } catch (value) {
@@ -313,9 +302,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     // The lost packet may have carried a strength change or a stop. Resend
     // absolute strengths next time, and keep a pending stop pending.
     _forceStrength = true;
-    _awaitingSequence = null;
-    _ackTimer?.cancel();
-    _ackTimer = null;
     if (stop) _stopPending = true;
   }
 
@@ -323,9 +309,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     pulseClock.accept(OutputFrame(0, const {}));
     _forceStrength = true;
     _stopPending = true;
-    _awaitingSequence = null;
-    _ackTimer?.cancel();
-    _ackTimer = null;
     if (!_writing) await _sendNext();
   }
 
@@ -337,11 +320,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     if (value.length >= 4 && value[0] == 0xB1) {
       deviceStrengthA = value[2].clamp(0, 200);
       deviceStrengthB = value[3].clamp(0, 200);
-      if (_awaitingSequence == value[1]) {
-        _awaitingSequence = null;
-        _ackTimer?.cancel();
-        _ackTimer = null;
-      }
       _notify();
     }
   }
@@ -364,8 +342,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _pulseSubscription = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
-    _ackTimer?.cancel();
-    _ackTimer = null;
     final link = _link;
     if (link != null) {
       try {
@@ -392,8 +368,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _pulseSubscription = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
-    _ackTimer?.cancel();
-    _ackTimer = null;
     _link = null;
     unawaited(_notifySubscription?.cancel());
     _notifySubscription = null;
@@ -410,7 +384,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _desiredBalanceB = null;
     _sentBalanceA = null;
     _sentBalanceB = null;
-    _awaitingSequence = null;
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
     unawaited(_setBackgroundActive(false));
@@ -449,7 +422,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     unawaited(_pulseSubscription?.cancel());
     pulseClock.dispose();
     _batteryTimer?.cancel();
-    _ackTimer?.cancel();
     unawaited(_scanSubscription?.cancel());
     unawaited(_connectionSubscription?.cancel());
     unawaited(_notifySubscription?.cancel());

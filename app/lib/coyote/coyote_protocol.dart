@@ -11,7 +11,6 @@ const coyoteDeviceNamePrefix = '47';
 const coyotePulseInterval = OutputPulseClock.interval;
 
 class CoyotePacketEncoder {
-  int _nextStrengthSequence = 1;
   int _sentStrengthA = 0;
   int _sentStrengthB = 0;
 
@@ -19,15 +18,12 @@ class CoyotePacketEncoder {
     OutputPulseSnapshot? pulse, {
     bool forceStrength = false,
     bool silence = false,
-    bool allowStrengthChange = true,
   }) {
     final strengthA = silence ? 0 : _strength(pulse, 'A');
     final strengthB = silence ? 0 : _strength(pulse, 'B');
     var changed = 0;
-    if (allowStrengthChange) {
-      if (forceStrength || strengthA != _sentStrengthA) changed |= 0xC;
-      if (forceStrength || strengthB != _sentStrengthB) changed |= 0x3;
-    }
+    if (forceStrength || strengthA != _sentStrengthA) changed |= 0xC;
+    if (forceStrength || strengthB != _sentStrengthB) changed |= 0x3;
 
     final blank = OutputPulseFrame.blank().bytes;
     final pulseA = silence ? blank : pulse?.a.bytes ?? blank;
@@ -35,12 +31,7 @@ class CoyotePacketEncoder {
 
     final packet = Uint8List(20);
     packet[0] = 0xB0;
-    if (changed == 0) {
-      packet[1] = 0;
-    } else {
-      packet[1] = _nextStrengthSequence << 4 | changed;
-      _nextStrengthSequence = _nextStrengthSequence % 15 + 1;
-    }
+    packet[1] = changed;
     packet[2] = strengthA;
     packet[3] = strengthB;
     packet.setRange(4, 12, pulseA);

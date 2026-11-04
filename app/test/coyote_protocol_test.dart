@@ -21,7 +21,7 @@ void main() {
 
     expect(packet, hasLength(20));
     expect(packet[0], 0xB0);
-    expect(packet[1], 0x1F);
+    expect(packet[1], 0x0F);
     expect(packet[2], 80);
     expect(packet[3], 120);
     expect(packet.sublist(4, 12), [
@@ -48,7 +48,7 @@ void main() {
     expect(unchanged[1], 0x00);
 
     final changedA = encoder.encode(sample(frame(a: 90, b: 120)));
-    expect(changedA[1], 0x2C);
+    expect(changedA[1], 0x0C);
     expect(changedA[2], 90);
     expect(changedA[3], 120);
   });
@@ -80,35 +80,18 @@ void main() {
     ]);
   });
 
-  test('deferred strength change keeps waveform stream alive', () {
+  test('absolute strength changes never request an acknowledgement', () {
     final encoder = CoyotePacketEncoder();
     final sample = OutputPulseSequencer().sample;
-    final first = encoder.encode(
-      sample(frame(a: 80, b: 120)),
-      forceStrength: true,
-    );
-    final deferred = encoder.encode(
-      sample(frame(a: 90, b: 120)),
-      allowStrengthChange: false,
-    );
-
-    expect(first[1], 0x1F);
-    expect(deferred[1], 0x00);
-    expect(deferred.sublist(4, 12), isNot(first.sublist(4, 12)));
-
-    final delivered = encoder.encode(sample(frame(a: 90, b: 120)));
-    expect(delivered[1], 0x2C);
-    expect(delivered[2], 90);
-  });
-
-  test('strength sequence cycles from 1 through F', () {
-    final encoder = CoyotePacketEncoder();
-    final sample = OutputPulseSequencer().sample;
-    final sequences = <int>[];
-    for (var strength = 1; strength <= 16; strength++) {
-      sequences.add(encoder.encode(sample(frame(a: strength, b: 0)))[1] >> 4);
+    for (var strength = 0; strength <= 200; strength++) {
+      final packet = encoder.encode(
+        sample(frame(a: strength, b: 200 - strength)),
+      );
+      expect(packet[1] >> 4, 0);
+      expect(packet[2], strength);
+      expect(packet[3], 200 - strength);
+      if (strength > 0) expect(packet[1] & 0xF, 0xF);
     }
-    expect(sequences, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 1]);
   });
 
   test('silence packet clears both strengths and pulses', () {
@@ -118,7 +101,7 @@ void main() {
       silence: true,
     );
     expect(packet, hasLength(20));
-    expect(packet[1], 0x1F);
+    expect(packet[1], 0x0F);
     expect(packet[2], 0);
     expect(packet[3], 0);
     expect(packet.sublist(4, 8), everyElement(0x0A));

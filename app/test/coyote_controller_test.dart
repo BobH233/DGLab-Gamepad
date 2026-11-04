@@ -252,7 +252,7 @@ void main() {
   Iterable<(num, num)> values(Iterable<PulseSample> samples) =>
       samples.map((sample) => (sample.frequency, sample.strength));
 
-  timingTest('refresh and ack timeout stay on the shared 100ms clock', (
+  timingTest('frequent refreshes stay on the shared 100ms clock', (
     tester,
     controller,
     transport,
@@ -280,12 +280,12 @@ void main() {
     }
     expect(link.writes.last[2], 40);
     expect(
-      link.writes.skip(1).where((packet) => packet[1] >> 4 != 0),
+      link.writes.skip(1).where((packet) => packet[1] & 0xF != 0),
       isNotEmpty,
     );
   });
 
-  timingTest('an unacknowledged strength is retried on a regular tick', (
+  timingTest('strength updates reach the next tick without any B1 reports', (
     tester,
     controller,
     transport,
@@ -294,16 +294,53 @@ void main() {
     await controller.connect(device);
     await tester.pump();
     final link = transport.links.single;
-    controller.accept(frame(50));
-    for (var i = 0; i < 16; i++) {
+    for (var strength = 10; strength <= 160; strength += 10) {
+      controller.accept(frame(strength));
       await tester.pump(const Duration(milliseconds: 100));
+      expect(link.writes.last[1], 0x0C);
+      expect(link.writes.last[2], strength);
     }
     expect(link.writes, hasLength(17));
-    final strengthWrites = link.writes
-        .where((packet) => packet[1] >> 4 != 0)
-        .toList();
-    expect(strengthWrites.length, greaterThanOrEqualTo(3));
-    expect(strengthWrites.skip(1).map((packet) => packet[2]), everyElement(50));
+    await tester.pump(const Duration(milliseconds: 50));
+    await controller.emergencyStop();
+    expect(link.writes.last[2], 0);
+    controller.accept(frame(20));
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(link.writes.last[2], 20);
+  });
+
+  timingTest('touch strength and frequency follow each tick without B1', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    for (var i = 1; i <= 10; i++) {
+      controller.accept(
+        OutputFrame(i, {
+          'A': {
+            'intensity': i * 10,
+            'enabled': true,
+            'waveformId': waveforms.first.id,
+            'frequencyMs': i * 10.0,
+            'waveformIntensity': 100,
+          },
+          'B': {'intensity': 0, 'enabled': false},
+        }),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(link.writes.last[2], i * 10);
+      expect(link.writes.last.sublist(4, 8), everyElement(i * 10));
+      expect(link.writes.last.sublist(8, 12), everyElement(100));
+    }
+    expect(link.writes, hasLength(11));
+    link.notifyController.add([0xB1, 0, 91, 4]);
+    await tester.pump();
+    expect(controller.deviceStrengthA, 91);
+    expect(controller.deviceStrengthB, 4);
   });
 
   timingTest('offline preview and BLE share phase across a connection', (
@@ -320,7 +357,6 @@ void main() {
     await controller.connect(device);
     await tester.pump();
     final link = transport.links.single;
-    link.notifyController.add([0xB1, link.writes.single[1] >> 4, 0, 0]);
     await tester.pump(const Duration(milliseconds: 100));
     expect(link.writes, hasLength(2));
     expect(
@@ -372,7 +408,6 @@ void main() {
     await controller.connect(device);
     await tester.pump();
     final link = transport.links.single;
-    link.notifyController.add([0xB1, link.writes.single[1] >> 4, 0, 0]);
     controller.accept(frame(40));
     await tester.pump(const Duration(milliseconds: 100));
     expect(link.writes.last[2], 40);
