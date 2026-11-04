@@ -36,6 +36,7 @@ void main() {
         MaterialApp(
           theme: ThemeData(
             brightness: Brightness.dark,
+            platform: TargetPlatform.iOS,
             scaffoldBackgroundColor: Palette.background,
           ),
           home: Scaffold(
@@ -71,6 +72,29 @@ void main() {
       expect(desk.engine.state.touchSurfaceVisible, isFalse);
       expect(find.text('频率映射（纵向）'), findsOneWidget);
       expect(find.text('强度映射（横向）'), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      final settingsList = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(ListView),
+      );
+      expect(settingsList, findsOneWidget);
+      final settingsScrollable = find.descendant(
+        of: settingsList,
+        matching: find.byType(Scrollable),
+      );
+      final settingsPosition = tester
+          .state<ScrollableState>(settingsScrollable)
+          .position;
+      if (settingsPosition.maxScrollExtent > 0) {
+        await tester.drag(settingsList, const Offset(0, -140));
+        await tester.pumpAndSettle();
+        expect(settingsPosition.pixels, greaterThan(0));
+        settingsPosition.jumpTo(0);
+        await tester.pump();
+        await tester.drag(settingsList, const Offset(0, 80));
+        await tester.pumpAndSettle();
+        expect(settingsPosition.pixels, 0);
+      }
       final balance = tester.widget<Slider>(
         find.descendant(of: find.byType(Dialog), matching: find.byType(Slider)),
       );

@@ -116,9 +116,12 @@ class _TouchPanelState extends State<TouchPanel> {
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
                 child: settings
-                    ? SingleChildScrollView(
+                    ? ListView(
                         key: const ValueKey('touch-settings'),
-                        child: _TouchSettings(desk: desk, channel: channel),
+                        padding: EdgeInsets.zero,
+                        children: [
+                          _TouchSettings(desk: desk, channel: channel),
+                        ],
                       )
                     : _TouchSurface(
                         key: ValueKey('touch-surface-$channel'),
