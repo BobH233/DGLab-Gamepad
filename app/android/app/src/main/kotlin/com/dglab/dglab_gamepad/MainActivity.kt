@@ -138,9 +138,21 @@ class MainActivity : FlutterActivity() {
         "locationServicesRequired" to (Build.VERSION.SDK_INT < Build.VERSION_CODES.S)
     )
 
+    // Popping the last Flutter route finishes the activity on Android 11 and
+    // below, which destroys the engine that owns the BLE link. Treat Back on
+    // the root screen like Home instead. Android 12+ already moves a root
+    // launcher activity to the background rather than finishing it.
+    override fun popSystemNavigator(): Boolean {
+        moveTaskToBack(true)
+        return true
+    }
+
     override fun onDestroy() {
         pendingBluetoothResult?.success(permissionState())
         pendingBluetoothResult = null
+        // The engine goes away with this activity, so nothing is left for the
+        // foreground service to keep alive.
+        stopService(Intent(this, CoyoteForegroundService::class.java))
         super.onDestroy()
     }
 
