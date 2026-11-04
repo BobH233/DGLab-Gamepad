@@ -11,6 +11,7 @@ import 'package:dglab_gamepad/control/control_state.dart';
 import 'package:dglab_gamepad/control/control_store.dart';
 import 'package:dglab_gamepad/control/models.dart';
 import 'package:dglab_gamepad/ui/control/control_home.dart';
+import 'package:dglab_gamepad/ui/control/waveform_view.dart';
 import 'package:dglab_gamepad/ui/palette.dart';
 
 void main() {
@@ -63,6 +64,10 @@ void main() {
         ),
       );
       expect(find.text('A 通道'), findsWidgets);
+      final textScaler = MediaQuery.textScalerOf(
+        tester.element(find.text('A 通道').first),
+      );
+      expect(textScaler.scale(20), 20);
       expect(find.text('快捷操作'), findsNothing);
       expect(find.text('应用选中'), findsNothing);
       expect(find.byTooltip('打开 A 通道触控'), findsOneWidget);
@@ -261,10 +266,13 @@ void main() {
       ),
     );
 
-    expect(find.byType(NavigationRail), findsOneWidget);
+    final rail = find.byKey(const ValueKey('compact-side-navigation'));
+    expect(rail, findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
-    final railRect = tester.getRect(find.byType(NavigationRail));
-    expect(railRect.width, lessThanOrEqualTo(80));
+    final railRect = tester.getRect(rail);
+    expect(railRect.width, lessThanOrEqualTo(66));
+    expect(railRect.height, lessThan(200));
+    expect(tester.getSize(find.byType(LiveWaveformView).first).height, 58);
     final dashboard = find.byType(ListView).first;
     final viewport = tester.getRect(dashboard);
     for (final channel in channelIds) {

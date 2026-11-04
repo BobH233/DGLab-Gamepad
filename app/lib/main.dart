@@ -35,6 +35,13 @@ class _GamepadAppState extends State<GamepadApp> {
   Widget build(BuildContext context) => MaterialApp(
     title: 'DG-LAB · 控制台',
     debugShowCheckedModeBanner: false,
+    builder: (context, child) {
+      final media = MediaQuery.of(context);
+      return MediaQuery(
+        data: media.copyWith(textScaler: TextScaler.noScaling),
+        child: child!,
+      );
+    },
     theme: ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: Palette.background,

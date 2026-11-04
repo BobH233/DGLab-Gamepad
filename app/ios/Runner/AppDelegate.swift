@@ -5,13 +5,43 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+  private var orientationChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
+    if let registrar = registrar(forPlugin: "display_orientation") {
+      let channel = FlutterMethodChannel(
+        name: "dglab_gamepad/display_orientation",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "navigationSide" else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        result(self.navigationSide())
+      }
+      orientationChannel = channel
+    }
     SilentAudioKeepAlive.shared.start()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  private func navigationSide() -> String? {
+    let scene = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .first { $0.activationState == .foregroundActive }
+    switch scene?.interfaceOrientation {
+    case .landscapeLeft:
+      return "left"
+    case .landscapeRight:
+      return "right"
+    default:
+      return nil
+    }
   }
 }
 

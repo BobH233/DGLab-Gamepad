@@ -7,6 +7,7 @@ import '../../control/control_desk.dart';
 import '../../control/control_state.dart';
 import '../../control/models.dart';
 import '../../control/pulse_import.dart';
+import '../../platform/display_orientation.dart';
 import '../palette.dart';
 import '../monitor_screen.dart';
 import 'bindings_page.dart';
@@ -23,12 +24,14 @@ class ControlHome extends StatefulWidget {
   State<ControlHome> createState() => _ControlHomeState();
 }
 
-class _ControlHomeState extends State<ControlHome> {
+class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
   int page = 0;
   int _lastFocusRequest = 0;
   int _lastTouchPanelRequest = 0;
   bool _focusScrollScheduled = false;
   bool _openingTouch = false;
+  bool _railSideRefreshScheduled = false;
+  NavigationRailSide? _platformRailSide;
   final Map<String, GlobalKey> _channelKeys = {
     for (final id in channelIds) id: GlobalKey(),
   };
@@ -38,9 +41,11 @@ class _ControlHomeState extends State<ControlHome> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _lastFocusRequest = desk.engine.state.focusRequest;
     _lastTouchPanelRequest = desk.engine.state.touchPanelRequest;
     desk.addListener(_handleDeskChanges);
+    _scheduleRailSideRefresh();
   }
 
   @override
@@ -57,7 +62,22 @@ class _ControlHomeState extends State<ControlHome> {
   @override
   void dispose() {
     desk.removeListener(_handleDeskChanges);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() => _scheduleRailSideRefresh();
+
+  void _scheduleRailSideRefresh() {
+    if (_railSideRefreshScheduled) return;
+    _railSideRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _railSideRefreshScheduled = false;
+      final side = await DisplayOrientation.navigationSide();
+      if (!mounted || side == null || side == _platformRailSide) return;
+      setState(() => _platformRailSide = side);
+    });
   }
 
   void _handleDeskChanges() {
@@ -207,316 +227,353 @@ class _ControlHomeState extends State<ControlHome> {
     final size = MediaQuery.sizeOf(context);
     final compactLandscape = size.width > size.height && size.height < 600;
     final safePadding = MediaQuery.paddingOf(context);
-    final railOnRight = safePadding.left >= safePadding.right;
-    return ListenableBuilder(
-      listenable: desk,
-      builder: (context, _) => Scaffold(
-        body: SafeArea(
-          left: !compactLandscape,
-          right: !compactLandscape,
-          child: Stack(
-            children: [
-              Padding(
-                padding: compactLandscape
-                    ? EdgeInsets.only(
-                        left: railOnRight ? 0 : 74,
-                        right: railOnRight ? 74 : 0,
-                      )
-                    : EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: compactLandscape
-                          ? const EdgeInsets.fromLTRB(16, 4, 10, 4)
-                          : const EdgeInsets.fromLTRB(24, 20, 16, 14),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Row(
-                                  children: [
-                                    const Text(
-                                      'DG-LAB',
-                                      style: TextStyle(
-                                        fontFamily: 'Arial',
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w700,
-                                        color: Palette.yellow,
-                                        letterSpacing: -0.3,
-                                      ),
-                                    ),
-                                    if (MediaQuery.sizeOf(context).width >=
-                                        600) ...[
-                                      const SizedBox(width: 14),
-                                      Text(
-                                        ['控制台', '按键绑定', '操作脚本'][page],
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          color: Palette.muted,
+    final fallbackRailOnRight = safePadding.left >= safePadding.right;
+    final railOnRight = _platformRailSide == null
+        ? fallbackRailOnRight
+        : _platformRailSide == NavigationRailSide.right;
+    final islandInset = railOnRight ? safePadding.left : safePadding.right;
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
+      child: ListenableBuilder(
+        listenable: desk,
+        builder: (context, _) => Scaffold(
+          body: SafeArea(
+            left: !compactLandscape,
+            right: !compactLandscape,
+            child: Stack(
+              children: [
+                Padding(
+                  padding: compactLandscape
+                      ? EdgeInsets.only(
+                          left: railOnRight ? islandInset : 74,
+                          right: railOnRight ? 74 : islandInset,
+                        )
+                      : EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: compactLandscape
+                            ? const EdgeInsets.fromLTRB(16, 4, 10, 4)
+                            : const EdgeInsets.fromLTRB(24, 20, 16, 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    children: [
+                                      const Text(
+                                        'DG-LAB',
+                                        style: TextStyle(
+                                          fontFamily: 'Arial',
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                          color: Palette.yellow,
+                                          letterSpacing: -0.3,
                                         ),
                                       ),
+                                      if (MediaQuery.sizeOf(context).width >=
+                                          600) ...[
+                                        const SizedBox(width: 14),
+                                        Text(
+                                          ['控制台', '按键绑定', '操作脚本'][page],
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: Palette.muted,
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            tooltip: '手柄监测',
-                            visualDensity: compactLandscape
-                                ? VisualDensity.compact
-                                : VisualDensity.standard,
-                            constraints: compactLandscape
-                                ? const BoxConstraints.tightFor(
-                                    width: 36,
-                                    height: 36,
-                                  )
-                                : null,
-                            icon: const Icon(
-                              Icons.sports_esports_outlined,
-                              color: Palette.yellow,
-                            ),
-                            onPressed: () async {
-                              desk.beginEdit();
-                              await Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) =>
-                                      MonitorScreen(monitor: desk.monitor),
-                                ),
-                              );
-                              if (page == 0) desk.endEdit();
-                            },
-                          ),
-                          TextButton.icon(
-                            onPressed: () => desk.setAutoScrollToAction(
-                              !desk.autoScrollToAction,
-                            ),
-                            style: TextButton.styleFrom(
-                              foregroundColor: desk.autoScrollToAction
-                                  ? Palette.yellow
-                                  : Palette.muted,
-                              minimumSize: Size(0, compactLandscape ? 34 : 40),
-                              padding: EdgeInsets.symmetric(
-                                horizontal: compactLandscape ? 6 : 8,
-                              ),
-                              visualDensity: VisualDensity.compact,
-                              textStyle: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            icon: Icon(
-                              desk.autoScrollToAction
-                                  ? Icons.center_focus_strong
-                                  : Icons.center_focus_weak,
-                              size: 18,
-                            ),
-                            label: Text(
-                              '自动滚动：${desk.autoScrollToAction ? '开' : '关'}',
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          if (MediaQuery.sizeOf(context).width < 360)
                             IconButton(
-                              tooltip: desk.anyChannelEnabled ? '全部停止' : '全部启动',
-                              onPressed: desk.toggleAllChannels,
-                              icon: Icon(
-                                desk.anyChannelEnabled
-                                    ? Icons.stop_rounded
-                                    : Icons.play_arrow_rounded,
-                                size: 18,
-                              ),
-                            )
-                          else
-                            OutlinedButton.icon(
-                              onPressed: desk.toggleAllChannels,
-                              style: compactLandscape
-                                  ? OutlinedButton.styleFrom(
-                                      minimumSize: const Size(0, 34),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                      visualDensity: VisualDensity.compact,
+                              tooltip: '手柄监测',
+                              visualDensity: compactLandscape
+                                  ? VisualDensity.compact
+                                  : VisualDensity.standard,
+                              constraints: compactLandscape
+                                  ? const BoxConstraints.tightFor(
+                                      width: 36,
+                                      height: 36,
                                     )
                                   : null,
+                              icon: const Icon(
+                                Icons.sports_esports_outlined,
+                                color: Palette.yellow,
+                              ),
+                              onPressed: () async {
+                                desk.beginEdit();
+                                await Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) =>
+                                        MonitorScreen(monitor: desk.monitor),
+                                  ),
+                                );
+                                if (page == 0) desk.endEdit();
+                              },
+                            ),
+                            TextButton.icon(
+                              onPressed: () => desk.setAutoScrollToAction(
+                                !desk.autoScrollToAction,
+                              ),
+                              style: TextButton.styleFrom(
+                                foregroundColor: desk.autoScrollToAction
+                                    ? Palette.yellow
+                                    : Palette.muted,
+                                minimumSize: Size(
+                                  0,
+                                  compactLandscape ? 34 : 40,
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: compactLandscape ? 6 : 8,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                textStyle: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                               icon: Icon(
-                                desk.anyChannelEnabled
-                                    ? Icons.stop_rounded
-                                    : Icons.play_arrow_rounded,
+                                desk.autoScrollToAction
+                                    ? Icons.center_focus_strong
+                                    : Icons.center_focus_weak,
                                 size: 18,
                               ),
                               label: Text(
-                                desk.anyChannelEnabled ? '全部停止' : '全部启动',
+                                '自动滚动：${desk.autoScrollToAction ? '开' : '关'}',
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-                    if (desk.error != null)
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: SelectableText(
-                          desk.error!,
-                          style: const TextStyle(color: Palette.yellow),
+                            const SizedBox(width: 4),
+                            if (MediaQuery.sizeOf(context).width < 360)
+                              IconButton(
+                                tooltip: desk.anyChannelEnabled
+                                    ? '全部停止'
+                                    : '全部启动',
+                                onPressed: desk.toggleAllChannels,
+                                icon: Icon(
+                                  desk.anyChannelEnabled
+                                      ? Icons.stop_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 18,
+                                ),
+                              )
+                            else
+                              OutlinedButton.icon(
+                                onPressed: desk.toggleAllChannels,
+                                style: compactLandscape
+                                    ? OutlinedButton.styleFrom(
+                                        minimumSize: const Size(0, 34),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                        ),
+                                        visualDensity: VisualDensity.compact,
+                                      )
+                                    : null,
+                                icon: Icon(
+                                  desk.anyChannelEnabled
+                                      ? Icons.stop_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  desk.anyChannelEnabled ? '全部停止' : '全部启动',
+                                ),
+                              ),
+                          ],
                         ),
                       ),
-                    if (desk.persistenceError != null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: Text(
-                          desk.persistenceError!,
-                          style: const TextStyle(
-                            color: Palette.yellow,
-                            fontSize: 12,
+                      if (desk.error != null)
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: SelectableText(
+                            desk.error!,
+                            style: const TextStyle(color: Palette.yellow),
                           ),
                         ),
+                      if (desk.persistenceError != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(
+                            desk.persistenceError!,
+                            style: const TextStyle(
+                              color: Palette.yellow,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      if (desk.loadWarnings.isNotEmpty)
+                        ExpansionTile(
+                          title: Text('${desk.loadWarnings.length} 项配置未载入'),
+                          children: [
+                            for (final warning in desk.loadWarnings)
+                              ListTile(title: Text(warning)),
+                          ],
+                        ),
+                      Expanded(
+                        child: !desk.ready
+                            ? const Center(child: CircularProgressIndicator())
+                            : switch (page) {
+                                1 => BindingsPage(desk: desk),
+                                2 => ScriptsPage(desk: desk),
+                                _ => _dashboard(
+                                  context,
+                                  compactLandscape: compactLandscape,
+                                ),
+                              },
                       ),
-                    if (desk.loadWarnings.isNotEmpty)
-                      ExpansionTile(
-                        title: Text('${desk.loadWarnings.length} 项配置未载入'),
-                        children: [
-                          for (final warning in desk.loadWarnings)
-                            ListTile(title: Text(warning)),
-                        ],
-                      ),
-                    Expanded(
-                      child: !desk.ready
-                          ? const Center(child: CircularProgressIndicator())
-                          : switch (page) {
-                              1 => BindingsPage(desk: desk),
-                              2 => ScriptsPage(desk: desk),
-                              _ => _dashboard(
-                                context,
-                                compactLandscape: compactLandscape,
-                              ),
-                            },
-                    ),
-                  ],
-                ),
-              ),
-              if (compactLandscape)
-                Positioned(
-                  top: 0,
-                  bottom: 0,
-                  left: railOnRight ? null : 0,
-                  right: railOnRight ? 0 : null,
-                  child: _sideNavigation(
-                    context,
-                    onRight: railOnRight,
+                    ],
                   ),
                 ),
-            ],
+                if (compactLandscape)
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: railOnRight ? null : 0,
+                    right: railOnRight ? 0 : null,
+                    child: _sideNavigation(onRight: railOnRight),
+                  ),
+              ],
+            ),
           ),
-        ),
-        bottomNavigationBar: compactLandscape
-            ? null
-            : NavigationBarTheme(
-                data: NavigationBarThemeData(
-                  labelTextStyle: WidgetStatePropertyAll(
-                    const TextStyle(fontSize: 12),
+          bottomNavigationBar: compactLandscape
+              ? null
+              : NavigationBarTheme(
+                  data: NavigationBarThemeData(
+                    labelTextStyle: WidgetStatePropertyAll(
+                      const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  child: NavigationBar(
+                    height: 68,
+                    selectedIndex: page,
+                    onDestinationSelected: navigate,
+                    backgroundColor: Palette.surface,
+                    indicatorColor: Palette.yellow,
+                    destinations: const [
+                      NavigationDestination(
+                        icon: Icon(Icons.tune_rounded),
+                        selectedIcon: Icon(
+                          Icons.tune_rounded,
+                          color: Palette.background,
+                        ),
+                        label: '控制台',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.gamepad_outlined),
+                        selectedIcon: Icon(
+                          Icons.gamepad_outlined,
+                          color: Palette.background,
+                        ),
+                        label: '按键绑定',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.code_rounded),
+                        selectedIcon: Icon(
+                          Icons.code_rounded,
+                          color: Palette.background,
+                        ),
+                        label: '操作脚本',
+                      ),
+                    ],
                   ),
                 ),
-                child: NavigationBar(
-                  height: 68,
-                  selectedIndex: page,
-                  onDestinationSelected: navigate,
-                  backgroundColor: Palette.surface,
-                  indicatorColor: Palette.yellow,
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.tune_rounded),
-                      selectedIcon: Icon(
-                        Icons.tune_rounded,
-                        color: Palette.background,
-                      ),
-                      label: '控制台',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.gamepad_outlined),
-                      selectedIcon: Icon(
-                        Icons.gamepad_outlined,
-                        color: Palette.background,
-                      ),
-                      label: '按键绑定',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.code_rounded),
-                      selectedIcon: Icon(
-                        Icons.code_rounded,
-                        color: Palette.background,
-                      ),
-                      label: '操作脚本',
-                    ),
-                  ],
-                ),
-              ),
+        ),
       ),
     );
   }
 
-  Widget _sideNavigation(
-    BuildContext context, {
-    required bool onRight,
-  }) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: Palette.surface,
-      border: Border(
-        left: onRight ? const BorderSide(color: Palette.line) : BorderSide.none,
-        right: onRight
-            ? BorderSide.none
-            : const BorderSide(color: Palette.line),
-      ),
-    ),
-    child: MediaQuery.removePadding(
-      context: context,
-      removeLeft: true,
-      removeRight: true,
-      child: NavigationRailTheme(
-        data: const NavigationRailThemeData(
-          backgroundColor: Palette.surface,
-          indicatorColor: Palette.yellow,
-          selectedIconTheme: IconThemeData(color: Palette.background, size: 21),
-          unselectedIconTheme: IconThemeData(color: Palette.muted, size: 21),
-          selectedLabelTextStyle: TextStyle(
-            color: Palette.yellow,
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelTextStyle: TextStyle(
-            color: Palette.muted,
-            fontSize: 10,
-          ),
+  Widget _sideNavigation({required bool onRight}) => Align(
+    alignment: onRight ? Alignment.centerRight : Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Material(
+        key: const ValueKey('compact-side-navigation'),
+        color: Palette.surface,
+        elevation: 4,
+        shadowColor: Colors.black54,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Palette.line),
         ),
-        child: NavigationRail(
-          minWidth: 74,
-          groupAlignment: -0.35,
-          labelType: NavigationRailLabelType.all,
-          selectedIndex: page,
-          onDestinationSelected: navigate,
-          destinations: const [
-            NavigationRailDestination(
-              icon: Icon(Icons.tune_rounded),
-              selectedIcon: Icon(Icons.tune_rounded),
-              label: Text('控制台'),
+        child: SizedBox(
+          width: 66,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _sideNavigationItem(
+                  index: 0,
+                  icon: Icons.tune_rounded,
+                  label: '控制台',
+                ),
+                _sideNavigationItem(
+                  index: 1,
+                  icon: Icons.gamepad_outlined,
+                  label: '按键绑定',
+                ),
+                _sideNavigationItem(
+                  index: 2,
+                  icon: Icons.code_rounded,
+                  label: '操作脚本',
+                ),
+              ],
             ),
-            NavigationRailDestination(
-              icon: Icon(Icons.gamepad_outlined),
-              selectedIcon: Icon(Icons.gamepad_outlined),
-              label: Text('按键绑定'),
-            ),
-            NavigationRailDestination(
-              icon: Icon(Icons.code_rounded),
-              selectedIcon: Icon(Icons.code_rounded),
-              label: Text('操作脚本'),
-            ),
-          ],
+          ),
         ),
       ),
     ),
   );
+
+  Widget _sideNavigationItem({
+    required int index,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected = page == index;
+    return InkWell(
+      onTap: () => navigate(index),
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        height: 56,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
+              width: 40,
+              height: 30,
+              decoration: BoxDecoration(
+                color: selected ? Palette.yellow : Colors.transparent,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected ? Palette.background : Palette.muted,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              style: TextStyle(
+                color: selected ? Palette.yellow : Palette.muted,
+                fontSize: 10,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _dashboard(BuildContext context, {required bool compactLandscape}) =>
       ListView(
@@ -857,7 +914,7 @@ class _ControlHomeState extends State<ControlHome> {
               ),
               SizedBox(height: compact ? 6 : 16),
               SizedBox(
-                height: compact ? 32 : 54,
+                height: compact ? 58 : 54,
                 width: double.infinity,
                 child: LiveWaveformView(
                   channel: id,
@@ -1258,15 +1315,20 @@ class _RepeatButtonState extends State<_RepeatButton> {
         onLongPressStart: _startRepeat,
         onLongPressCancel: _stopRepeat,
         onLongPressEnd: (_) => _stopRepeat(),
-        child: Material(
-          color: Palette.yellow,
-          shape: const CircleBorder(),
-          child: SizedBox.square(
-            dimension: widget.compact ? 32 : 38,
-            child: Icon(
-              widget.icon,
-              size: widget.compact ? 18 : 20,
-              color: Palette.background,
+        child: SizedBox.square(
+          dimension: widget.compact ? 36 : 38,
+          child: Center(
+            child: Material(
+              color: Palette.yellow,
+              shape: const CircleBorder(),
+              child: SizedBox.square(
+                dimension: widget.compact ? 28 : 38,
+                child: Icon(
+                  widget.icon,
+                  size: widget.compact ? 16 : 20,
+                  color: Palette.background,
+                ),
+              ),
             ),
           ),
         ),

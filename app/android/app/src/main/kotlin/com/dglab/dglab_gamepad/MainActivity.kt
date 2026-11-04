@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import com.dglab.gamepad_bridge.GamepadBridgePlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -48,6 +49,28 @@ class MainActivity : FlutterActivity() {
             } catch (error: Exception) {
                 result.error("foreground_service", error.message, null)
             }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "dglab_gamepad/display_orientation"
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "navigationSide") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val currentDisplay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                this.display
+            } else {
+                @Suppress("DEPRECATION")
+                windowManager.defaultDisplay
+            }
+            result.success(
+                when (currentDisplay?.rotation) {
+                    Surface.ROTATION_90 -> "left"
+                    Surface.ROTATION_270 -> "right"
+                    else -> null
+                }
+            )
         }
     }
 
