@@ -181,6 +181,8 @@ void main() {
       await tester.tap(find.text('按键绑定').last);
       await tester.pump();
       expect(desk.editing, isTrue);
+      expect(find.text('连接郊狼'), findsNothing);
+      expect(find.text('郊狼已连接'), findsNothing);
       await tester.tap(find.text('LT').first);
       await tester.pumpAndSettle();
       expect(find.text('LT · 操作绑定'), findsOneWidget);
