@@ -79,6 +79,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   /// down. An async step in [connect] that resumes under a different value
   /// belongs to a session that no longer exists.
   int _session = 0;
+  Future<void> _backgroundUpdate = Future.value();
 
   /// Consecutive failed or timed-out writes. A single GATT hiccup is common
   /// on Android; only a sustained run means the link is gone.
@@ -94,6 +95,14 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   bool get connected => status == CoyoteStatus.connected;
   bool get scanning => status == CoyoteStatus.scanning;
   bool get connecting => status == CoyoteStatus.connecting;
+
+  Future<void> _updateBackground(bool connected) {
+    return _backgroundUpdate = _backgroundUpdate
+        .then((_) => _setBackgroundActive(connected))
+        .catchError((Object error) {
+          debugPrint('Background runtime update failed: $error');
+        });
+  }
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -161,8 +170,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> connect(CoyoteScanDevice candidate) async {
-    if (connecting || connected) return;
-    await _stopScan();
+    if (_disposed || _manualDisconnect || connecting || connected) return;
     deviceId = candidate.id;
     deviceName = candidate.name;
     error = null;
@@ -170,36 +178,40 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _notify();
     final session = ++_session;
     bool stale() => _disposed || session != _session;
-    final ready = Completer<void>();
-    _connectionSubscription = _transport
-        .connect(candidate.id)
-        .listen(
-          (update) {
-            if (update.connectionState == DeviceConnectionState.connected &&
-                !ready.isCompleted) {
-              ready.complete();
-            } else if (update.connectionState ==
-                    DeviceConnectionState.disconnected &&
-                !_manualDisconnect) {
-              final message = update.failure == null
-                  ? '郊狼连接已断开'
-                  : '郊狼连接已断开：${update.failure!.message}';
-              if (!ready.isCompleted) {
-                ready.completeError(CoyoteBleException(message));
-              } else {
-                _resetConnection(message);
-              }
-            }
-          },
-          onError: (Object value) {
-            if (!ready.isCompleted) {
-              ready.completeError(value);
-            } else {
-              _resetConnection('连接异常：$value');
-            }
-          },
-        );
     try {
+      await _stopScan();
+      if (stale()) return;
+      final ready = Completer<void>();
+      _connectionSubscription = _transport
+          .connect(candidate.id)
+          .listen(
+            (update) {
+              if (stale()) return;
+              if (update.connectionState == DeviceConnectionState.connected &&
+                  !ready.isCompleted) {
+                ready.complete();
+              } else if (update.connectionState ==
+                      DeviceConnectionState.disconnected &&
+                  !_manualDisconnect) {
+                final message = update.failure == null
+                    ? '郊狼连接已断开'
+                    : '郊狼连接已断开：${update.failure!.message}';
+                if (!ready.isCompleted) {
+                  ready.completeError(CoyoteBleException(message));
+                } else {
+                  _resetConnection(message);
+                }
+              }
+            },
+            onError: (Object value) {
+              if (stale()) return;
+              if (!ready.isCompleted) {
+                ready.completeError(value);
+              } else {
+                _resetConnection('连接异常：$value');
+              }
+            },
+          );
       await ready.future.timeout(const Duration(seconds: 18));
       if (stale()) return;
       final link = await _transport.open(candidate.id);
@@ -209,18 +221,17 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       }
       _link = link;
       _notifySubscription = link.notifications().listen(
-        _handleNotification,
-        onError: (Object value) => _resetConnection('设备通知中断：$value'),
+        (value) {
+          if (!stale()) _handleNotification(value);
+        },
+        onError: (Object value) {
+          if (!stale()) _resetConnection('设备通知中断：$value');
+        },
       );
       await _readBattery();
       if (stale()) return;
-      await _setBackgroundActive(true);
-      if (stale()) {
-        // The reset that invalidated this session may have released the
-        // keep-alive before this request finished; release it again.
-        await _setBackgroundActive(false);
-        return;
-      }
+      await _updateBackground(true);
+      if (stale()) return;
       _encoder = CoyotePacketEncoder();
       _forceStrength = true;
       status = CoyoteStatus.connected;
@@ -270,6 +281,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
               ),
             )
             .timeout(writeTimeout);
+        if (session != _session || _disposed) return;
         _sentBalanceA = balanceA;
         _sentBalanceB = balanceB;
       }
@@ -327,8 +339,12 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   Future<void> _readBattery() async {
     final link = _link;
     if (link == null) return;
+    final session = _session;
     try {
-      final value = await link.readBattery();
+      final value = await link.readBattery().timeout(
+        const Duration(seconds: 3),
+      );
+      if (session != _session || _disposed) return;
       if (value != null && value.isNotEmpty) {
         batteryLevel = value.first;
         _notify();
@@ -386,7 +402,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _sentBalanceB = null;
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
-    unawaited(_setBackgroundActive(false));
+    unawaited(_updateBackground(false));
     if (wasConnected && message != null) onUnexpectedDisconnect?.call();
     _notify();
   }
@@ -398,7 +414,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _scanSubscription = null;
     status = CoyoteStatus.error;
     error = message;
-    unawaited(_setBackgroundActive(false));
+    unawaited(_updateBackground(false));
     _notify();
   }
 
@@ -418,6 +434,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   @override
   void dispose() {
     _disposed = true;
+    _session++;
     _scanTimer?.cancel();
     unawaited(_pulseSubscription?.cancel());
     pulseClock.dispose();
@@ -425,7 +442,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     unawaited(_scanSubscription?.cancel());
     unawaited(_connectionSubscription?.cancel());
     unawaited(_notifySubscription?.cancel());
-    unawaited(_setBackgroundActive(false));
+    unawaited(_updateBackground(false));
     super.dispose();
   }
 }

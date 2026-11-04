@@ -14,6 +14,7 @@ class FakeLink implements CoyoteLink {
   /// When set, the next writes complete with these results in order.
   final List<Object?> outcomes = [];
   Completer<void>? hold;
+  Completer<List<int>?>? batteryGate;
 
   @override
   Future<void> write(List<int> value) async {
@@ -29,13 +30,14 @@ class FakeLink implements CoyoteLink {
   Stream<List<int>> notifications() => notifyController.stream;
 
   @override
-  Future<List<int>?> readBattery() async => [87];
+  Future<List<int>?> readBattery() async => batteryGate?.future ?? [87];
 }
 
 class FakeTransport implements CoyoteTransport {
   final connections = <StreamController<ConnectionStateUpdate>>[];
   final links = <FakeLink>[];
   Completer<void>? openGate;
+  Completer<List<int>?>? batteryGate;
 
   @override
   Future<BleStatus> adapterStatus() async => BleStatus.ready;
@@ -69,7 +71,7 @@ class FakeTransport implements CoyoteTransport {
   @override
   Future<CoyoteLink?> open(String deviceId) async {
     if (openGate != null) await openGate!.future;
-    final link = FakeLink();
+    final link = FakeLink()..batteryGate = batteryGate;
     links.add(link);
     return link;
   }
@@ -221,6 +223,61 @@ void main() {
     );
     expect(controller.status, CoyoteStatus.error);
     link.hold!.complete();
+  });
+
+  test('simultaneous connect calls create only one session', () async {
+    await Future.wait([controller.connect(device), controller.connect(device)]);
+    expect(transport.connections, hasLength(1));
+    expect(controller.connected, isTrue);
+  });
+
+  test('a late battery read cannot overwrite a newer connection', () async {
+    final gate = Completer<List<int>?>();
+    transport.batteryGate = gate;
+    final first = controller.connect(device);
+    await pumpEventQueue();
+    transport.emit(
+      transport.connections.single,
+      DeviceConnectionState.disconnected,
+    );
+    await pumpEventQueue();
+    transport.batteryGate = null;
+    await controller.connect(device);
+    expect(controller.batteryLevel, 87);
+    gate.complete([1]);
+    await first;
+    expect(controller.batteryLevel, 87);
+    expect(controller.connected, isTrue);
+  });
+
+  test('an old background activation cannot stop a newer session', () async {
+    controller.dispose();
+    final gate = Completer<void>();
+    var held = false;
+    controller = CoyoteController(
+      transport: transport,
+      setBackgroundActive: (active) async {
+        if (active && !held) {
+          held = true;
+          await gate.future;
+        }
+        background.add(active);
+      },
+    );
+    final first = controller.connect(device);
+    await pumpEventQueue();
+    transport.emit(
+      transport.connections.single,
+      DeviceConnectionState.disconnected,
+    );
+    await pumpEventQueue();
+    final second = controller.connect(device);
+    await pumpEventQueue();
+    gate.complete();
+    await Future.wait([first, second]);
+    expect(controller.connected, isTrue);
+    expect(background.last, isTrue);
+    expect(background.sublist(background.length - 3), [true, false, true]);
   });
 
   void timingTest(
