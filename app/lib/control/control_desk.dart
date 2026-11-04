@@ -34,38 +34,6 @@ class ControlDesk extends ChangeNotifier {
             '${c.base}:${c.waveform}:${c.linearAmount}:${c.linearUnit}:${c.boostAmount}',
       )
       .join('|');
-  String get _viewKey {
-    final state = engine.state;
-    return [
-      state.selected,
-      state.columns,
-      state.touchMode,
-      state.touchChannel,
-      state.touchPoint?.x,
-      state.touchPoint?.y,
-      state.touchPoint?.active,
-      state.touchGrid,
-      state.touchPanelRequest,
-      state.touchPanelRequestChannel,
-      for (final id in channelIds) state.touchBalance[id],
-      for (final id in channelIds) state.touchHorizontalSplits[id]?.join(':'),
-      for (final id in channelIds) state.touchVerticalSplits[id]?.join(':'),
-      for (final id in channelIds)
-        [
-          state.channels[id]!.base,
-          state.enabled(id),
-          state.channels[id]!.waveform,
-          state.channels[id]!.cursor,
-          state.channels[id]!.linearAmount,
-          state.channels[id]!.linearUnit,
-          state.channels[id]!.boostAmount,
-          state.effective(id),
-          state.offset(id),
-        ].join(':'),
-      for (final entry in engine.errors.entries) '${entry.key}:${entry.value}',
-    ].join('|');
-  }
-
   void _persistChanges() {
     if (_channelKey == _savedChannelKey || _saveTimer != null) return;
     _saveTimer = Timer(const Duration(milliseconds: 600), () {
@@ -330,9 +298,9 @@ class ControlDesk extends ChangeNotifier {
       );
       _timer = Timer.periodic(const Duration(milliseconds: 50), (_) {
         if (!editing) {
-          final before = _viewKey;
+          final before = engine.revision;
           engine.tick(clock.elapsed);
-          if (_viewKey != before) {
+          if (engine.revision != before) {
             _persistChanges();
             _notify();
           }

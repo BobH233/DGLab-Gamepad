@@ -645,4 +645,19 @@ registerAction({apiVersion:1,id:'user.lastWave',name:'最后波形',inputs:['but
     expect(engine.errors, isEmpty);
     expect(engine.state.channels['A']!.waveform, waveforms.last.id);
   });
+
+  test('revision moves only when a tick changes something', () {
+    configure([
+      binding('leftStickVector', 'stickStrength', {'target': 'A'}),
+    ]);
+    engine.tick(Duration.zero);
+    final idle = engine.revision;
+    engine.tick(const Duration(milliseconds: 50));
+    expect(engine.revision, idle);
+
+    input({Control.leftY: -1});
+    final before = engine.revision;
+    engine.tick(const Duration(milliseconds: 100));
+    expect(engine.revision, greaterThan(before));
+  });
 }

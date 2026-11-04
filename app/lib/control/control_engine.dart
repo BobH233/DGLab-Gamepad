@@ -33,6 +33,11 @@ class ControlEngine {
   final Map<String, _Slot> _slots = {};
   final Map<String, String> errors = {};
   final List<String> eventLog = [];
+
+  /// Bumped whenever a script changes [state] or [errors]. Lets callers that
+  /// poll [tick] tell whether anything visible happened without diffing the
+  /// whole state.
+  int revision = 0;
   Map<String, ActionDefinition> _definitions = const {};
   GamepadState _input = GamepadState.neutral;
   GamepadState _rawInput = GamepadState.neutral;
@@ -208,6 +213,7 @@ class ControlEngine {
         'random': _random.nextDouble(),
       }, shared: _shared());
       state.apply(binding.id, commands);
+      if (commands.isNotEmpty) revision++;
       if (commands.isNotEmpty &&
           event['type'] != 'tick' &&
           event['type'] != 'value') {
@@ -219,6 +225,7 @@ class ControlEngine {
       }
     } catch (e) {
       errors[slot.binding.id] = e.toString();
+      revision++;
       stopAll();
     }
   }
