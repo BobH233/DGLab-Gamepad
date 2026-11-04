@@ -76,6 +76,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   int? _sentBalanceB;
   int? _awaitingSequence;
 
+  /// Incremented whenever a connection attempt starts or the link is torn
+  /// down. An async step in [connect] that resumes under a different value
+  /// belongs to a session that no longer exists.
+  int _session = 0;
+
   bool get connected => status == CoyoteStatus.connected;
   bool get scanning => status == CoyoteStatus.scanning;
   bool get connecting => status == CoyoteStatus.connecting;
@@ -153,6 +158,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     error = null;
     status = CoyoteStatus.connecting;
     _notify();
+    final session = ++_session;
+    bool stale() => _disposed || session != _session;
     final ready = Completer<void>();
     _connectionSubscription = _transport
         .connect(candidate.id)
@@ -184,7 +191,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         );
     try {
       await ready.future.timeout(const Duration(seconds: 18));
+      if (stale()) return;
       final link = await _transport.open(candidate.id);
+      if (stale()) return;
       if (link == null) {
         throw const CoyoteBleException('设备不支持郊狼 3 控制服务');
       }
@@ -194,12 +203,19 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         onError: (Object value) => _resetConnection('设备通知中断：$value'),
       );
       await _readBattery();
+      if (stale()) return;
+      await _setBackgroundActive(true);
+      if (stale()) {
+        // The reset that invalidated this session may have released the
+        // keep-alive before this request finished; release it again.
+        await _setBackgroundActive(false);
+        return;
+      }
       _encoder = CoyotePacketEncoder();
       _latestFrame = null;
       _forceStrength = true;
       status = CoyoteStatus.connected;
       error = null;
-      await _setBackgroundActive(true);
       _pulseTimer = Timer.periodic(
         coyotePulseInterval,
         (_) => unawaited(_sendNext()),
@@ -211,6 +227,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       unawaited(_sendNext());
       _notify();
     } catch (value) {
+      if (stale()) return;
       await disconnect();
       _setError(value is CoyoteBleException ? value.message : '连接失败：$value');
     }
@@ -337,6 +354,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   void _resetConnection([String? message]) {
+    _session++;
     _pulseTimer?.cancel();
     _pulseTimer = null;
     _batteryTimer?.cancel();

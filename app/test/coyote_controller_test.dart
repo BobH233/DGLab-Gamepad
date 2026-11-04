@@ -129,4 +129,30 @@ void main() {
     await pumpEventQueue();
     expect(controller.connected, isTrue);
   });
+
+  test(
+    'a disconnect during service discovery never reports connected',
+    () async {
+      transport.openGate = Completer<void>();
+      final connecting = controller.connect(device);
+      await pumpEventQueue();
+      expect(controller.connecting, isTrue);
+
+      transport.emit(
+        transport.connections.single,
+        DeviceConnectionState.disconnected,
+      );
+      transport.openGate!.complete();
+      await connecting;
+      await pumpEventQueue();
+
+      expect(controller.connected, isFalse);
+      expect(controller.status, CoyoteStatus.error);
+      expect(background, isNot(contains(true)));
+      // No sender runs for the dead session.
+      final writes = transport.links.single.writes.length;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(transport.links.single.writes.length, writes);
+    },
+  );
 }
