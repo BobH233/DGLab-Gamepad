@@ -482,6 +482,53 @@ void main() {
       everyElement(const PulseSample(10, 0)),
     );
   });
+
+  timingTest(
+    'disconnect times out its final zero write and releases the link',
+    (tester, controller, transport, trace) async {
+      await controller.connect(device);
+      await tester.pump();
+      final link = transport.links.single;
+      final gate = Completer<void>();
+      link.hold = gate;
+      final disconnecting = controller.disconnect();
+      expect(controller.connected, isFalse);
+      await tester.pump(CoyoteController.writeTimeout);
+      await disconnecting;
+      expect(transport.connections.single.hasListener, isFalse);
+      expect(controller.status, CoyoteStatus.disconnected);
+      gate.complete();
+      await tester.pump();
+    },
+  );
+
+  timingTest(
+    'an in-flight balance update cannot write output after disconnect',
+    (tester, controller, transport, trace) async {
+      await controller.connect(device);
+      await tester.pump();
+      final link = transport.links.single;
+      final gate = Completer<void>();
+      link.hold = gate;
+      controller.accept(
+        OutputFrame(1, {
+          'A': {'intensity': 60, 'enabled': true, 'balance': 128},
+          'B': {'intensity': 0, 'enabled': false, 'balance': 128},
+        }),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(link.writes.last[0], 0xBF);
+      final disconnecting = controller.disconnect();
+      expect(link.writes.last.sublist(0, 4), [0xB0, 0x0F, 0, 0]);
+      gate.complete();
+      await tester.pump();
+      await disconnecting;
+      expect(
+        link.writes.where((packet) => packet[0] == 0xB0 && packet[2] > 0),
+        isEmpty,
+      );
+    },
+  );
 }
 
 const coyotePulseIntervalForTest = Duration(milliseconds: 100);

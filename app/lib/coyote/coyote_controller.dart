@@ -64,6 +64,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   StreamSubscription<OutputPulseSnapshot>? _pulseSubscription;
   Timer? _batteryTimer;
   CoyoteLink? _link;
+  Completer<void>? _connectionReady;
   CoyotePacketEncoder _encoder = CoyotePacketEncoder();
   bool _forceStrength = false;
   bool _writing = false;
@@ -116,7 +117,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> scan() async {
-    if (scanning || connecting || connected) return;
+    if (_disposed || _manualDisconnect || scanning || connecting || connected) {
+      return;
+    }
     await _stopScan();
     devices.clear();
     error = null;
@@ -182,6 +185,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       await _stopScan();
       if (stale()) return;
       final ready = Completer<void>();
+      _connectionReady = ready;
       _connectionSubscription = _transport
           .connect(candidate.id)
           .listen(
@@ -353,30 +357,34 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> disconnect() async {
+    if (_manualDisconnect) return;
     _manualDisconnect = true;
+    _session++;
+    status = CoyoteStatus.disconnected;
     unawaited(_pulseSubscription?.cancel());
     _pulseSubscription = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
     final link = _link;
-    if (link != null) {
-      try {
-        await link.write(
-          _encoder.encode(null, forceStrength: true, silence: true),
-        );
-      } catch (_) {}
+    _link = null;
+    try {
+      if (link != null) {
+        try {
+          await link
+              .write(_encoder.encode(null, forceStrength: true, silence: true))
+              .timeout(writeTimeout);
+        } catch (_) {}
+      }
+    } finally {
+      _resetConnection();
+      _manualDisconnect = false;
     }
-    await _notifySubscription?.cancel();
-    _notifySubscription = null;
-    await _connectionSubscription?.cancel();
-    _connectionSubscription = null;
-    _resetConnection();
-    _manualDisconnect = false;
   }
 
   void _resetConnection([String? message]) {
     final wasConnected = connected;
     _session++;
+    _cancelConnectionReady();
     _writing = false;
     _writeFailures = 0;
     _stopPending = false;
@@ -407,6 +415,14 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _notify();
   }
 
+  void _cancelConnectionReady() {
+    final ready = _connectionReady;
+    _connectionReady = null;
+    if (ready != null && !ready.isCompleted) {
+      ready.completeError(const CoyoteBleException('连接已取消'));
+    }
+  }
+
   void _setError(String message) {
     _scanTimer?.cancel();
     _scanTimer = null;
@@ -435,6 +451,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   void dispose() {
     _disposed = true;
     _session++;
+    _cancelConnectionReady();
     _scanTimer?.cancel();
     unawaited(_pulseSubscription?.cancel());
     pulseClock.dispose();
