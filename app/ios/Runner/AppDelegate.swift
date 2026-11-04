@@ -6,12 +6,12 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var orientationChannel: FlutterMethodChannel?
+  private var backgroundChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    SilentAudioKeepAlive.shared.start()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -31,6 +31,27 @@ import UIKit
       result(self?.navigationSide())
     }
     orientationChannel = channel
+
+    // Keep the process running in the background only while a Coyote is
+    // connected, mirroring the Android foreground service.
+    let background = FlutterMethodChannel(
+      name: "dglab_gamepad/background_runtime",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    background.setMethodCallHandler { call, result in
+      guard call.method == "setBleConnected" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let arguments = call.arguments as? [String: Any]
+      if arguments?["connected"] as? Bool == true {
+        SilentAudioKeepAlive.shared.start()
+      } else {
+        SilentAudioKeepAlive.shared.stop()
+      }
+      result(nil)
+    }
+    backgroundChannel = background
   }
 
   private func navigationSide() -> String? {
@@ -113,6 +134,23 @@ private final class SilentAudioKeepAlive: NSObject {
       hideNowPlaying()
     } catch {
       NSLog("Background audio keep-alive failed: \(error)")
+    }
+  }
+
+  func stop() {
+    guard active else { return }
+    active = false
+    player.stop()
+    engine.stop()
+    buffer = nil
+    do {
+      // Let audio from other apps return to full volume / resume.
+      try AVAudioSession.sharedInstance().setActive(
+        false,
+        options: [.notifyOthersOnDeactivation]
+      )
+    } catch {
+      NSLog("Background audio deactivation failed: \(error)")
     }
   }
 

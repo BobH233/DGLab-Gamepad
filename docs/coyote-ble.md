@@ -42,5 +42,6 @@ Touch balance uses `BF` packets with soft limits left unchanged (`201, 201`), th
 - Unexpected BLE disconnect stops the local 10Hz sender and clears the selected preview connection.
 - Connection is manual on every launch; the app never auto-enables a channel.
 - Android keeps the link alive with a `connectedDevice` foreground service while connected. Home and Back both leave output running in the background. Removing the task from recents or any activity destruction ends the engine and stops the service with it (`stopWithTask="true"`, `START_NOT_STICKY`).
+- iOS keeps the process running in the background with a silent, mixable audio session (`UIBackgroundModes` `audio`), started on connect and deactivated on disconnect. `bluetooth-central` alone only wakes the app for BLE events and cannot drive the 10Hz sender.
 
 The protocol and packet layout are based on the referenced `DG-Lab-Coyote-Game-Hub` commit recorded in [third-party notices](third-party-notices.md). Physical output timing, packet loss, reconnect behavior and battery reporting still require hardware verification on iOS and Android.
