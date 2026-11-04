@@ -270,26 +270,16 @@ class _MonitorScreenState extends State<MonitorScreen> {
                   style: TextStyle(color: Palette.muted, fontSize: 11),
                 ),
                 const SizedBox(width: 10),
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<GamepadAppearance>(
-                    value: appearance,
-                    isDense: true,
-                    style: const TextStyle(color: Palette.muted, fontSize: 11),
-                    icon: const Icon(Icons.expand_more_rounded, size: 16),
-                    items: const [
-                      DropdownMenuItem(
-                        value: GamepadAppearance.direwolf,
-                        child: Text('冰原狼 2'),
-                      ),
-                      DropdownMenuItem(
-                        value: GamepadAppearance.system,
-                        child: Text('通用布局'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) setState(() => appearance = value);
-                    },
-                  ),
+                _appearanceOption(
+                  key: const ValueKey('appearance-direwolf'),
+                  label: '冰原狼 2',
+                  value: GamepadAppearance.direwolf,
+                ),
+                const SizedBox(width: 6),
+                _appearanceOption(
+                  key: const ValueKey('appearance-system'),
+                  label: '通用布局',
+                  value: GamepadAppearance.system,
                 ),
               ],
             ),
@@ -325,6 +315,37 @@ class _MonitorScreenState extends State<MonitorScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _appearanceOption({
+    required Key key,
+    required String label,
+    required GamepadAppearance value,
+  }) {
+    final selected = appearance == value;
+    return Material(
+      key: key,
+      color: selected ? Palette.yellow : Palette.raised,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: selected ? Palette.yellow : Palette.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: selected ? null : () => setState(() => appearance = value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Palette.background : Palette.muted,
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
       ),
     );
   }

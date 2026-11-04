@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
+import 'package:dglab_gamepad/ui/gamepad_diagram.dart';
 import 'package:dglab_gamepad/ui/monitor_screen.dart';
 
 Map<String, dynamic> packet(Map<String, double> values) => {
@@ -94,6 +95,19 @@ void main() {
       await tester.pump();
       expect(find.text('Xbox Test'), findsOneWidget);
       expect(find.text('实时接收'), findsOneWidget);
+      expect(find.byType(DropdownButton<GamepadAppearance>), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('appearance-system')));
+      await tester.pump();
+      expect(
+        tester.widget<GamepadDiagram>(find.byType(GamepadDiagram)).appearance,
+        GamepadAppearance.system,
+      );
+      await tester.tap(find.byKey(const ValueKey('appearance-direwolf')));
+      await tester.pump();
+      expect(
+        tester.widget<GamepadDiagram>(find.byType(GamepadDiagram)).appearance,
+        GamepadAppearance.direwolf,
+      );
       stream.add(packet({'south': 1, 'leftTrigger': 0.65}));
       await tester.pump();
       await tester.pump();
