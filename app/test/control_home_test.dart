@@ -382,6 +382,83 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('touch controls emit selection haptics outside gamepad paths', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Palette.background,
+          colorScheme: const ColorScheme.dark(
+            primary: Palette.yellow,
+            surface: Palette.surface,
+          ),
+        ),
+        home: ControlHome(desk: desk),
+      ),
+    );
+    final haptics = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') haptics.add(call);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+    );
+
+    await tester.ensureVisible(find.text('B 通道').first);
+    await tester.tap(find.text('B 通道').first);
+    await tester.pump();
+    expect(desk.engine.state.selected, 'B');
+    expect(haptics, hasLength(1));
+
+    final toggle = find.byTooltip('启动 B 通道');
+    await tester.ensureVisible(toggle);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(desk.engine.state.enabled('B'), isTrue);
+    expect(haptics, hasLength(2));
+
+    final waveform = find.text(waveforms[2].name).first;
+    await tester.ensureVisible(waveform);
+    await tester.tap(waveform);
+    await tester.pump();
+    expect(desk.engine.state.channels['B']!.waveform, waveforms[2].id);
+    expect(haptics, hasLength(3));
+
+    haptics.clear();
+    desk.selectChannel('A');
+    desk.toggle('A');
+    desk.chooseWaveform(0);
+    await tester.pump();
+    expect(haptics, isEmpty);
+
+    await tester.tap(find.text('按键绑定').last);
+    await tester.pump();
+    expect(haptics, hasLength(1));
+    expect(haptics.single.arguments, 'HapticFeedbackType.selectionClick');
+
+    await tester.pumpWidget(const SizedBox());
+    desk.dispose();
+    monitor.dispose();
+    unawaited(stream.close());
+    await tester.pump();
+  });
+
   test('active touch effects refresh when channel controls change', () async {
     final stream = StreamController<Map<String, dynamic>>();
     final monitor = InputMonitor(

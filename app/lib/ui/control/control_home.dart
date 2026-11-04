@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import '../../control/control_desk.dart';
 import '../../control/control_state.dart';
@@ -170,12 +171,20 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
 
   void navigate(int value) {
     if (value == page) return;
+    _selectionHaptic();
     if (value == 0) {
       desk.endEdit();
     } else {
       desk.beginEdit();
     }
     setState(() => page = value);
+  }
+
+  void _selectionHaptic() => HapticFeedback.selectionClick().ignore();
+
+  void _toggleAllChannels() {
+    _selectionHaptic();
+    desk.toggleAllChannels();
   }
 
   GlobalKey _waveformKey(String id) =>
@@ -355,7 +364,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                                 tooltip: desk.anyChannelEnabled
                                     ? '全部停止'
                                     : '全部启动',
-                                onPressed: desk.toggleAllChannels,
+                                onPressed: _toggleAllChannels,
                                 icon: Icon(
                                   desk.anyChannelEnabled
                                       ? Icons.stop_rounded
@@ -365,7 +374,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                               )
                             else
                               OutlinedButton.icon(
-                                onPressed: desk.toggleAllChannels,
+                                onPressed: _toggleAllChannels,
                                 style: compactLandscape
                                     ? OutlinedButton.styleFrom(
                                         minimumSize: const Size(0, 34),
@@ -794,7 +803,10 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => desk.selectChannel(id),
+        onTap: () {
+          if (!selected) _selectionHaptic();
+          desk.selectChannel(id);
+        },
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
         child: Padding(
           padding: EdgeInsets.all(compact ? 12 : 20),
@@ -852,7 +864,10 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                   SizedBox(width: compact ? 2 : 4),
                   IconButton.filledTonal(
                     tooltip: enabled ? '停止 $id 通道' : '启动 $id 通道',
-                    onPressed: () => desk.toggle(id),
+                    onPressed: () {
+                      _selectionHaptic();
+                      desk.toggle(id);
+                    },
                     style: IconButton.styleFrom(
                       backgroundColor: enabled
                           ? Palette.yellow
@@ -1121,7 +1136,10 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
         focused = i == channel.cursor;
     return InkWell(
       key: _waveformKey(w.id),
-      onTap: () => desk.chooseWaveform(i),
+      onTap: () {
+        if (w.id != channel.waveform) _selectionHaptic();
+        desk.chooseWaveform(i);
+      },
       onFocusChange: (focus) {
         if (focus) desk.focusWaveform(i);
       },
