@@ -8,6 +8,7 @@ import '../control/models.dart';
 import '../platform/background_runtime.dart';
 import '../platform/bluetooth_permissions.dart';
 import 'coyote_protocol.dart';
+import 'coyote_transport.dart';
 
 enum CoyoteStatus { disconnected, scanning, connecting, connected, error }
 
@@ -32,8 +33,18 @@ class CoyoteBleException implements Exception {
 }
 
 class CoyoteController extends ChangeNotifier implements OutputSink {
-  FlutterReactiveBle? _ble;
-  FlutterReactiveBle get ble => _ble ??= FlutterReactiveBle();
+  CoyoteController({
+    CoyoteTransport? transport,
+    Future<BluetoothPermissionState> Function()? requestPermissions,
+    Future<void> Function(bool connected)? setBackgroundActive,
+  }) : _transport = transport ?? ReactiveBleCoyoteTransport(),
+       _requestPermissions = requestPermissions ?? BluetoothPermissions.request,
+       _setBackgroundActive =
+           setBackgroundActive ?? BackgroundRuntime.setBleConnected;
+
+  final CoyoteTransport _transport;
+  final Future<BluetoothPermissionState> Function() _requestPermissions;
+  final Future<void> Function(bool connected) _setBackgroundActive;
 
   CoyoteStatus status = CoyoteStatus.disconnected;
   String? error;
@@ -51,8 +62,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   Timer? _pulseTimer;
   Timer? _batteryTimer;
   Timer? _ackTimer;
-  Characteristic? _writeCharacteristic;
-  Characteristic? _batteryCharacteristic;
+  CoyoteLink? _link;
   OutputFrame? _latestFrame;
   CoyotePacketEncoder _encoder = CoyotePacketEncoder();
   bool _forceStrength = false;
@@ -89,15 +99,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     status = CoyoteStatus.scanning;
     _notify();
     try {
-      final permissions = await BluetoothPermissions.request();
+      final permissions = await _requestPermissions();
       if (!permissions.granted) {
         throw const CoyoteBleException('未获得蓝牙权限，请在系统设置中允许“附近设备”权限');
       }
-      await ble.initialize();
-      final adapter = await ble.statusStream
-          .where((value) => value != BleStatus.unknown)
-          .first
-          .timeout(const Duration(seconds: 3));
+      final adapter = await _transport.adapterStatus();
       // The plugin caches its status stream, so an "unauthorized" value can
       // be stale right after the user grants permission on Android.
       final staleUnauthorized =
@@ -105,13 +111,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       if (adapter != BleStatus.ready && !staleUnauthorized) {
         throw CoyoteBleException(_adapterMessage(adapter));
       }
-      _scanSubscription = ble
-          .scanForDevices(
-            withServices: const [],
-            scanMode: ScanMode.lowLatency,
-            requireLocationServicesEnabled:
-                permissions.locationServicesRequired,
-          )
+      _scanSubscription = _transport
+          .scan(requireLocationServices: permissions.locationServicesRequired)
           .listen(
             (device) {
               final name = device.name.trim();
@@ -153,20 +154,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     status = CoyoteStatus.connecting;
     _notify();
     final ready = Completer<void>();
-    _connectionSubscription = ble
-        .connectToDevice(
-          id: candidate.id,
-          servicesWithCharacteristicsToDiscover: {
-            Uuid.parse(coyoteMainServiceUuid): [
-              Uuid.parse(coyoteWriteCharacteristicUuid),
-              Uuid.parse(coyoteNotifyCharacteristicUuid),
-            ],
-            Uuid.parse(coyoteBatteryServiceUuid): [
-              Uuid.parse(coyoteBatteryCharacteristicUuid),
-            ],
-          },
-          connectionTimeout: const Duration(seconds: 15),
-        )
+    _connectionSubscription = _transport
+        .connect(candidate.id)
         .listen(
           (update) {
             if (update.connectionState == DeviceConnectionState.connected &&
@@ -195,45 +184,12 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         );
     try {
       await ready.future.timeout(const Duration(seconds: 18));
-      if (Platform.isAndroid) {
-        await ble.requestMtu(deviceId: candidate.id, mtu: 64);
-      }
-      await ble.discoverAllServices(candidate.id);
-      final services = await ble.getDiscoveredServices(candidate.id);
-      final mainService = services
-          .where(
-            (item) => item.id.expanded == Uuid.parse(coyoteMainServiceUuid),
-          )
-          .firstOrNull;
-      final batteryService = services
-          .where(
-            (item) => item.id.expanded == Uuid.parse(coyoteBatteryServiceUuid),
-          )
-          .firstOrNull;
-      final write = mainService?.characteristics
-          .where(
-            (item) =>
-                item.id.expanded == Uuid.parse(coyoteWriteCharacteristicUuid),
-          )
-          .firstOrNull;
-      final notify = mainService?.characteristics
-          .where(
-            (item) =>
-                item.id.expanded == Uuid.parse(coyoteNotifyCharacteristicUuid),
-          )
-          .firstOrNull;
-      final battery = batteryService?.characteristics
-          .where(
-            (item) =>
-                item.id.expanded == Uuid.parse(coyoteBatteryCharacteristicUuid),
-          )
-          .firstOrNull;
-      if (write == null || notify == null) {
+      final link = await _transport.open(candidate.id);
+      if (link == null) {
         throw const CoyoteBleException('设备不支持郊狼 3 控制服务');
       }
-      _writeCharacteristic = write;
-      _batteryCharacteristic = battery;
-      _notifySubscription = notify.subscribe().listen(
+      _link = link;
+      _notifySubscription = link.notifications().listen(
         _handleNotification,
         onError: (Object value) => _resetConnection('设备通知中断：$value'),
       );
@@ -243,7 +199,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       _forceStrength = true;
       status = CoyoteStatus.connected;
       error = null;
-      await BackgroundRuntime.setBleConnected(true);
+      await _setBackgroundActive(true);
       _pulseTimer = Timer.periodic(
         coyotePulseInterval,
         (_) => unawaited(_sendNext()),
@@ -261,8 +217,8 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> _sendNext() async {
-    final characteristic = _writeCharacteristic;
-    if (_writing || characteristic == null || !connected) {
+    final link = _link;
+    if (_writing || link == null || !connected) {
       return;
     }
     _writing = true;
@@ -276,14 +232,13 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       if (balanceA != null &&
           balanceB != null &&
           (balanceA != _sentBalanceA || balanceB != _sentBalanceB)) {
-        await characteristic.write(
+        await link.write(
           _encoder.encodeBalance(
             frequencyBalanceA: balanceA,
             frequencyBalanceB: balanceB,
             pulseBalanceA: 0,
             pulseBalanceB: 0,
           ),
-          withResponse: false,
         );
         _sentBalanceA = balanceA;
         _sentBalanceB = balanceB;
@@ -305,7 +260,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
           unawaited(_sendNext());
         });
       }
-      await characteristic.write(packet, withResponse: false);
+      await link.write(packet);
     } catch (value) {
       _resetConnection('发送失败：$value');
     } finally {
@@ -346,11 +301,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   }
 
   Future<void> _readBattery() async {
-    final characteristic = _batteryCharacteristic;
-    if (characteristic == null) return;
+    final link = _link;
+    if (link == null) return;
     try {
-      final value = await characteristic.read();
-      if (value.isNotEmpty) {
+      final value = await link.readBattery();
+      if (value != null && value.isNotEmpty) {
         batteryLevel = value.first;
         _notify();
       }
@@ -365,12 +320,11 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _batteryTimer = null;
     _ackTimer?.cancel();
     _ackTimer = null;
-    final write = _writeCharacteristic;
-    if (write != null) {
+    final link = _link;
+    if (link != null) {
       try {
-        await write.write(
+        await link.write(
           _encoder.encode(null, forceStrength: true, silence: true),
-          withResponse: false,
         );
       } catch (_) {}
     }
@@ -389,10 +343,14 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _batteryTimer = null;
     _ackTimer?.cancel();
     _ackTimer = null;
-    _writeCharacteristic = null;
-    _batteryCharacteristic = null;
+    _link = null;
     unawaited(_notifySubscription?.cancel());
     _notifySubscription = null;
+    // Cancelling the connection stream is what tears the GATT link down in
+    // flutter_reactive_ble. Leaving it open leaks the old connection, and its
+    // late events could reset a newer session.
+    unawaited(_connectionSubscription?.cancel());
+    _connectionSubscription = null;
     deviceStrengthA = 0;
     deviceStrengthB = 0;
     batteryLevel = null;
@@ -405,7 +363,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _awaitingSequence = null;
     status = message == null ? CoyoteStatus.disconnected : CoyoteStatus.error;
     error = message;
-    unawaited(BackgroundRuntime.setBleConnected(false));
+    unawaited(_setBackgroundActive(false));
     _notify();
   }
 
@@ -416,7 +374,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     _scanSubscription = null;
     status = CoyoteStatus.error;
     error = message;
-    unawaited(BackgroundRuntime.setBleConnected(false));
+    unawaited(_setBackgroundActive(false));
     _notify();
   }
 
@@ -443,7 +401,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     unawaited(_scanSubscription?.cancel());
     unawaited(_connectionSubscription?.cancel());
     unawaited(_notifySubscription?.cancel());
-    unawaited(BackgroundRuntime.setBleConnected(false));
+    unawaited(_setBackgroundActive(false));
     super.dispose();
   }
 }

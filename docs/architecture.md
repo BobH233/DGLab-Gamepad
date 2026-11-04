@@ -112,7 +112,7 @@ flowchart LR
 - `app/assets/actions`：10 个内置操作的真实 JS 源码；用户脚本沿用相同执行链。
 - `control_desk.dart`：连接 UI、会话、引擎与存储；不包含设备协议。
 - `app/lib/ui/control`：A/B 控制台、通道控制参数、自动生成的绑定表单、脚本导入/源码编辑。原有手柄监测页保留。
-- `app/lib/coyote`：Coyote 3 BLE 扫描／连接、通知解析、10Hz 输出循环和 20 字节控制包编码。
+- `app/lib/coyote`：Coyote 3 BLE 扫描／连接、通知解析、10Hz 输出循环和 20 字节控制包编码。`CoyoteTransport` 把 `flutter_reactive_ble` 收窄成控制器实际使用的几个操作，测试用假实现覆盖连接状态机。
 - `app/lib/control/touch_control.dart`：二维触控映射、波形频率压缩与平衡参数转换，不依赖 Flutter。
 - `app/lib/ui/control/touch_panel.dart`：单通道触控弹窗、设置、调试读数与粒子轨迹；只把归一化触点交给 `ControlDesk`。
 
