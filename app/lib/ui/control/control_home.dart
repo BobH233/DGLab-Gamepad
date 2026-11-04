@@ -212,6 +212,8 @@ class _ControlHomeState extends State<ControlHome> {
       listenable: desk,
       builder: (context, _) => Scaffold(
         body: SafeArea(
+          left: !compactLandscape,
+          right: !compactLandscape,
           child: Stack(
             children: [
               Padding(
@@ -401,7 +403,10 @@ class _ControlHomeState extends State<ControlHome> {
                   bottom: 0,
                   left: railOnRight ? null : 0,
                   right: railOnRight ? 0 : null,
-                  child: _sideNavigation(onRight: railOnRight),
+                  child: _sideNavigation(
+                    context,
+                    onRight: railOnRight,
+                  ),
                 ),
             ],
           ),
@@ -452,7 +457,10 @@ class _ControlHomeState extends State<ControlHome> {
     );
   }
 
-  Widget _sideNavigation({required bool onRight}) => DecoratedBox(
+  Widget _sideNavigation(
+    BuildContext context, {
+    required bool onRight,
+  }) => DecoratedBox(
     decoration: BoxDecoration(
       color: Palette.surface,
       border: Border(
@@ -462,42 +470,50 @@ class _ControlHomeState extends State<ControlHome> {
             : const BorderSide(color: Palette.line),
       ),
     ),
-    child: NavigationRailTheme(
-      data: const NavigationRailThemeData(
-        backgroundColor: Palette.surface,
-        indicatorColor: Palette.yellow,
-        selectedIconTheme: IconThemeData(color: Palette.background, size: 21),
-        unselectedIconTheme: IconThemeData(color: Palette.muted, size: 21),
-        selectedLabelTextStyle: TextStyle(
-          color: Palette.yellow,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
+    child: MediaQuery.removePadding(
+      context: context,
+      removeLeft: true,
+      removeRight: true,
+      child: NavigationRailTheme(
+        data: const NavigationRailThemeData(
+          backgroundColor: Palette.surface,
+          indicatorColor: Palette.yellow,
+          selectedIconTheme: IconThemeData(color: Palette.background, size: 21),
+          unselectedIconTheme: IconThemeData(color: Palette.muted, size: 21),
+          selectedLabelTextStyle: TextStyle(
+            color: Palette.yellow,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelTextStyle: TextStyle(
+            color: Palette.muted,
+            fontSize: 10,
+          ),
         ),
-        unselectedLabelTextStyle: TextStyle(color: Palette.muted, fontSize: 10),
-      ),
-      child: NavigationRail(
-        minWidth: 74,
-        groupAlignment: -0.35,
-        labelType: NavigationRailLabelType.all,
-        selectedIndex: page,
-        onDestinationSelected: navigate,
-        destinations: const [
-          NavigationRailDestination(
-            icon: Icon(Icons.tune_rounded),
-            selectedIcon: Icon(Icons.tune_rounded),
-            label: Text('控制台'),
-          ),
-          NavigationRailDestination(
-            icon: Icon(Icons.gamepad_outlined),
-            selectedIcon: Icon(Icons.gamepad_outlined),
-            label: Text('按键绑定'),
-          ),
-          NavigationRailDestination(
-            icon: Icon(Icons.code_rounded),
-            selectedIcon: Icon(Icons.code_rounded),
-            label: Text('操作脚本'),
-          ),
-        ],
+        child: NavigationRail(
+          minWidth: 74,
+          groupAlignment: -0.35,
+          labelType: NavigationRailLabelType.all,
+          selectedIndex: page,
+          onDestinationSelected: navigate,
+          destinations: const [
+            NavigationRailDestination(
+              icon: Icon(Icons.tune_rounded),
+              selectedIcon: Icon(Icons.tune_rounded),
+              label: Text('控制台'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.gamepad_outlined),
+              selectedIcon: Icon(Icons.gamepad_outlined),
+              label: Text('按键绑定'),
+            ),
+            NavigationRailDestination(
+              icon: Icon(Icons.code_rounded),
+              selectedIcon: Icon(Icons.code_rounded),
+              label: Text('操作脚本'),
+            ),
+          ],
+        ),
       ),
     ),
   );

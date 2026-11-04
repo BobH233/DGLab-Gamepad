@@ -263,6 +263,8 @@ void main() {
 
     expect(find.byType(NavigationRail), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
+    final railRect = tester.getRect(find.byType(NavigationRail));
+    expect(railRect.width, lessThanOrEqualTo(80));
     final dashboard = find.byType(ListView).first;
     final viewport = tester.getRect(dashboard);
     for (final channel in channelIds) {
@@ -275,6 +277,7 @@ void main() {
       final rect = tester.getRect(card);
       expect(rect.top, greaterThanOrEqualTo(viewport.top));
       expect(rect.bottom, lessThanOrEqualTo(viewport.bottom));
+      expect(rect.right, lessThanOrEqualTo(railRect.left));
     }
     expect(tester.takeException(), isNull);
 
