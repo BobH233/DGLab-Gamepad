@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import MediaPlayer
 import UIKit
 
 @main
@@ -42,6 +43,12 @@ private final class SilentAudioKeepAlive: NSObject {
       name: .AVAudioEngineConfigurationChange,
       object: engine
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleRouteChange(_:)),
+      name: AVAudioSession.routeChangeNotification,
+      object: nil
+    )
   }
 
   func start() {
@@ -70,6 +77,7 @@ private final class SilentAudioKeepAlive: NSObject {
       buffer = silentBuffer
       active = true
       play()
+      hideNowPlaying()
     } catch {
       NSLog("Background audio keep-alive failed: \(error)")
     }
@@ -84,6 +92,7 @@ private final class SilentAudioKeepAlive: NSObject {
         try engine.start()
       }
       player.play()
+      hideNowPlaying()
     } catch {
       NSLog("Background audio restart failed: \(error)")
     }
@@ -109,13 +118,34 @@ private final class SilentAudioKeepAlive: NSObject {
     }
   }
 
+  @objc private func handleRouteChange(_ notification: Notification) {
+    hideNowPlaying()
+  }
+
   private func restart() {
     guard active else { return }
     do {
       try AVAudioSession.sharedInstance().setActive(true)
       play()
+      hideNowPlaying()
     } catch {
       NSLog("Background audio resumption failed: \(error)")
     }
+  }
+
+  private func hideNowPlaying() {
+    let center = MPNowPlayingInfoCenter.default()
+    center.nowPlayingInfo = nil
+    center.playbackState = .stopped
+    let commands = MPRemoteCommandCenter.shared()
+    commands.playCommand.isEnabled = false
+    commands.pauseCommand.isEnabled = false
+    commands.stopCommand.isEnabled = false
+    commands.togglePlayPauseCommand.isEnabled = false
+    commands.nextTrackCommand.isEnabled = false
+    commands.previousTrackCommand.isEnabled = false
+    commands.changePlaybackPositionCommand.isEnabled = false
+    commands.skipForwardCommand.isEnabled = false
+    commands.skipBackwardCommand.isEnabled = false
   }
 }
