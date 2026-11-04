@@ -6,6 +6,7 @@ import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 
 import '../control/models.dart';
 import '../platform/background_runtime.dart';
+import '../platform/bluetooth_permissions.dart';
 import 'coyote_protocol.dart';
 
 enum CoyoteStatus { disconnected, scanning, connecting, connected, error }
@@ -88,16 +89,29 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     status = CoyoteStatus.scanning;
     _notify();
     try {
+      final permissions = await BluetoothPermissions.request();
+      if (!permissions.granted) {
+        throw const CoyoteBleException('未获得蓝牙权限，请在系统设置中允许“附近设备”权限');
+      }
       await ble.initialize();
       final adapter = await ble.statusStream
           .where((value) => value != BleStatus.unknown)
           .first
           .timeout(const Duration(seconds: 3));
-      if (adapter != BleStatus.ready) {
+      // The plugin caches its status stream, so an "unauthorized" value can
+      // be stale right after the user grants permission on Android.
+      final staleUnauthorized =
+          adapter == BleStatus.unauthorized && Platform.isAndroid;
+      if (adapter != BleStatus.ready && !staleUnauthorized) {
         throw CoyoteBleException(_adapterMessage(adapter));
       }
       _scanSubscription = ble
-          .scanForDevices(withServices: const [], scanMode: ScanMode.lowLatency)
+          .scanForDevices(
+            withServices: const [],
+            scanMode: ScanMode.lowLatency,
+            requireLocationServicesEnabled:
+                permissions.locationServicesRequired,
+          )
           .listen(
             (device) {
               final name = device.name.trim();

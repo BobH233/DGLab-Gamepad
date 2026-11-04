@@ -9,6 +9,8 @@
 - Battery service: `0000180a-0000-1000-8000-00805f9b34fb`.
 - Battery characteristic: `00001500-0000-1000-8000-00805f9b34fb`.
 
+Before scanning, Android requests runtime permissions: `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT` on Android 12+, `ACCESS_FINE_LOCATION` on Android 11 and below. Android 12+ scans with `neverForLocation` and does not require the system location switch; older versions still do. Apple platforms prompt through CoreBluetooth on first use.
+
 Android requests a 64-byte ATT MTU after connecting because one Coyote 3 control packet is 20 bytes. iOS and macOS use their system MTU.
 
 ## Control Packet
