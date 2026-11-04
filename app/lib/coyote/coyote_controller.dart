@@ -263,8 +263,6 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     }
     final session = _session;
     _writing = true;
-    final force = _forceStrength;
-    _forceStrength = false;
     final stop = _stopPending;
     _stopPending = false;
     try {
@@ -290,6 +288,10 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
         _sentBalanceB = balanceB;
       }
       if (session != _session || !connected) return;
+      if (!stop && _stopPending) return;
+      if (pulse != null && !identical(pulseClock.latestPulse, pulse)) return;
+      final force = _forceStrength;
+      _forceStrength = false;
       final packet = _encoder.encode(
         stop ? null : pulse,
         forceStrength: force,

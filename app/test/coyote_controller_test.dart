@@ -529,6 +529,75 @@ void main() {
       );
     },
   );
+
+  timingTest('a delayed balance write discards its obsolete pulse', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    final gate = Completer<void>();
+    link.hold = gate;
+    controller.accept(
+      OutputFrame(1, {
+        'A': {
+          'intensity': 60,
+          'enabled': true,
+          'balance': 128,
+          'waveformId': waveforms.first.id,
+        },
+        'B': {'intensity': 0, 'enabled': false, 'balance': 128},
+      }),
+    );
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(link.writes, hasLength(2));
+    expect(link.writes.last[0], 0xBF);
+    gate.complete();
+    link.hold = null;
+    await tester.pump();
+    expect(link.writes, hasLength(2));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(link.writes, hasLength(3));
+    expect(
+      values(decodePulseBytes(link.writes.last.sublist(4, 12))),
+      values(trace.samplesFor('A').skip(12)),
+    );
+  });
+
+  timingTest('a stop requested during balance write prevents stale output', (
+    tester,
+    controller,
+    transport,
+    trace,
+  ) async {
+    await controller.connect(device);
+    await tester.pump();
+    final link = transport.links.single;
+    final gate = Completer<void>();
+    link.hold = gate;
+    controller.accept(
+      OutputFrame(1, {
+        'A': {'intensity': 60, 'enabled': true, 'balance': 128},
+        'B': {'intensity': 0, 'enabled': false, 'balance': 128},
+      }),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await controller.emergencyStop();
+    gate.complete();
+    link.hold = null;
+    await tester.pump();
+    expect(link.writes, hasLength(3));
+    expect(link.writes.last.sublist(0, 4), [0xB0, 0x0F, 0, 0]);
+    expect(
+      link.writes.where((packet) => packet[0] == 0xB0 && packet[2] > 0),
+      isEmpty,
+    );
+  });
 }
 
 const coyotePulseIntervalForTest = Duration(milliseconds: 100);

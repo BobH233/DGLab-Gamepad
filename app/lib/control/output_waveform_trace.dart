@@ -136,16 +136,20 @@ class OutputPulseClock implements OutputSink {
       StreamController.broadcast(sync: true);
   Timer? _timer;
   OutputFrame _latestFrame = OutputFrame(0, const {});
+  OutputPulseSnapshot? _latestPulse;
 
   OutputPulseClock({bool autoStart = true}) {
     if (autoStart) {
       _timer = Timer.periodic(interval, (_) {
-        _pulses.add(_sequencer.sample(_latestFrame));
+        final pulse = _sequencer.sample(_latestFrame);
+        _latestPulse = pulse;
+        _pulses.add(pulse);
       });
     }
   }
 
   Stream<OutputPulseSnapshot> get pulses => _pulses.stream;
+  OutputPulseSnapshot? get latestPulse => _latestPulse;
 
   @override
   void accept(OutputFrame frame) => _latestFrame = frame;
