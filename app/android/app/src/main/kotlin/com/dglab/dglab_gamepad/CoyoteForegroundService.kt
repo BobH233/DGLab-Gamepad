@@ -38,8 +38,11 @@ class CoyoteForegroundService : Service() {
         }
     }
 
+    // The BLE link and the 10Hz sender live in the Flutter engine. If the
+    // process dies, a restarted service would hold a wake lock with nothing to
+    // keep alive, so it must not be recreated by the system.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        START_STICKY
+        START_NOT_STICKY
 
     override fun onBind(intent: Intent?): IBinder? = null
 

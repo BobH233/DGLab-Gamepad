@@ -17,6 +17,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // A fresh engine has no BLE connection yet; drop any service left over
+        // from a previous engine so it does not keep holding the wake lock.
+        stopService(Intent(this, CoyoteForegroundService::class.java))
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "dglab_gamepad/background_runtime"
