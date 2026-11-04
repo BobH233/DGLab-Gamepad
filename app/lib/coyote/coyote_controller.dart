@@ -81,6 +81,12 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
   /// belongs to a session that no longer exists.
   int _session = 0;
 
+  /// Consecutive failed or timed-out writes. A single GATT hiccup is common
+  /// on Android; only a sustained run means the link is gone.
+  int _writeFailures = 0;
+  static const maxConsecutiveWriteFailures = 5;
+  static const writeTimeout = Duration(milliseconds: 400);
+
   bool get connected => status == CoyoteStatus.connected;
   bool get scanning => status == CoyoteStatus.scanning;
   bool get connecting => status == CoyoteStatus.connecting;
@@ -238,6 +244,7 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
     if (_writing || link == null || !connected) {
       return;
     }
+    final session = _session;
     _writing = true;
     final force = _forceStrength;
     _forceStrength = false;
@@ -249,14 +256,16 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
       if (balanceA != null &&
           balanceB != null &&
           (balanceA != _sentBalanceA || balanceB != _sentBalanceB)) {
-        await link.write(
-          _encoder.encodeBalance(
-            frequencyBalanceA: balanceA,
-            frequencyBalanceB: balanceB,
-            pulseBalanceA: 0,
-            pulseBalanceB: 0,
-          ),
-        );
+        await link
+            .write(
+              _encoder.encodeBalance(
+                frequencyBalanceA: balanceA,
+                frequencyBalanceB: balanceB,
+                pulseBalanceA: 0,
+                pulseBalanceB: 0,
+              ),
+            )
+            .timeout(writeTimeout);
         _sentBalanceA = balanceA;
         _sentBalanceB = balanceB;
       }
@@ -277,13 +286,33 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
           unawaited(_sendNext());
         });
       }
-      await link.write(packet);
+      await link.write(packet).timeout(writeTimeout);
+      if (session == _session) _writeFailures = 0;
     } catch (value) {
-      _resetConnection('发送失败：$value');
+      if (session == _session) _handleWriteFailure(value, stop: stop);
     } finally {
-      _writing = false;
-      if (_stopPending) unawaited(_sendNext());
+      // A write that outlived its session must not touch the state of a
+      // newer one.
+      if (session == _session) {
+        _writing = false;
+        if (_stopPending) unawaited(_sendNext());
+      }
     }
+  }
+
+  void _handleWriteFailure(Object value, {required bool stop}) {
+    _writeFailures++;
+    if (_writeFailures >= maxConsecutiveWriteFailures) {
+      _resetConnection('发送失败：$value');
+      return;
+    }
+    // The lost packet may have carried a strength change or a stop. Resend
+    // absolute strengths next time, and keep a pending stop pending.
+    _forceStrength = true;
+    _awaitingSequence = null;
+    _ackTimer?.cancel();
+    _ackTimer = null;
+    if (stop) _stopPending = true;
   }
 
   Future<void> emergencyStop() async {
@@ -355,6 +384,9 @@ class CoyoteController extends ChangeNotifier implements OutputSink {
 
   void _resetConnection([String? message]) {
     _session++;
+    _writing = false;
+    _writeFailures = 0;
+    _stopPending = false;
     _pulseTimer?.cancel();
     _pulseTimer = null;
     _batteryTimer?.cancel();

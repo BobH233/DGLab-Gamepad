@@ -155,4 +155,55 @@ void main() {
       expect(transport.links.single.writes.length, writes);
     },
   );
+
+  test(
+    'isolated write failures keep the session and resend strength',
+    () async {
+      await controller.connect(device);
+      final link = transport.links.single;
+      controller.accept(frame(40));
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+
+      final failedFrom = link.writes.length;
+      link.outcomes.addAll([Exception('GATT busy'), Exception('GATT busy')]);
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(controller.connected, isTrue);
+
+      // writes[failedFrom] and [failedFrom + 1] failed; the next packet is
+      // the first one the device actually received after them.
+      final recovered = link.writes[failedFrom + 2];
+      expect(recovered[0], 0xB0);
+      // Strength is resent for both channels in case a change was lost.
+      expect(recovered[1] & 0x0F, 0x0F);
+      expect(recovered[2], 40);
+    },
+  );
+
+  test('a sustained run of write failures disconnects', () async {
+    await controller.connect(device);
+    final link = transport.links.single;
+    link.outcomes.addAll(
+      List.filled(CoyoteController.maxConsecutiveWriteFailures, Exception('x')),
+    );
+    await Future<void>.delayed(
+      coyotePulseIntervalForTest *
+          (CoyoteController.maxConsecutiveWriteFailures + 2),
+    );
+    expect(controller.status, CoyoteStatus.error);
+  });
+
+  test('a hung write times out instead of stalling output forever', () async {
+    await controller.connect(device);
+    final link = transport.links.single;
+    link.hold = Completer<void>();
+    await Future<void>.delayed(
+      CoyoteController.writeTimeout *
+              CoyoteController.maxConsecutiveWriteFailures +
+          const Duration(milliseconds: 600),
+    );
+    expect(controller.status, CoyoteStatus.error);
+    link.hold!.complete();
+  });
 }
+
+const coyotePulseIntervalForTest = Duration(milliseconds: 100);
