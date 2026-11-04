@@ -536,9 +536,9 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     required String label,
   }) {
     final selected = page == index;
-    return InkWell(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => navigate(index),
-      borderRadius: BorderRadius.circular(10),
       child: SizedBox(
         height: 56,
         child: Column(
@@ -553,10 +553,23 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                 color: selected ? Palette.yellow : Colors.transparent,
                 borderRadius: BorderRadius.circular(15),
               ),
-              child: Icon(
-                icon,
-                size: 20,
-                color: selected ? Palette.background : Palette.muted,
+              child: Material(
+                type: MaterialType.transparency,
+                shape: const StadiumBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: () => navigate(index),
+                  splashColor: selected
+                      ? Palette.background.withValues(alpha: 0.14)
+                      : Palette.yellow.withValues(alpha: 0.16),
+                  highlightColor: Colors.transparent,
+                  child: Icon(
+                    icon,
+                    size: 20,
+                    color: selected ? Palette.background : Palette.muted,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 2),
