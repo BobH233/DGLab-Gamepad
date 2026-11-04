@@ -114,12 +114,17 @@ class ActionDefinition {
   final List<Map<String, dynamic>> fields;
   final String source;
   final bool builtin;
+
+  /// Whether the action wants the ~20Hz `tick` event. Undeclared means true
+  /// so scripts written before the flag existed keep working.
+  final bool ticks;
   ActionDefinition(
     Map<String, dynamic> data,
     this.source, {
     this.builtin = false,
     String? displayName,
   }) : id = data['id'] as String,
+       ticks = data['ticks'] as bool? ?? true,
        registeredName = data['name'] as String,
        name = displayName ?? data['name'] as String,
        inputs = List<String>.from(data['inputs'] as List),
@@ -127,7 +132,13 @@ class ActionDefinition {
            .map((v) => Map<String, dynamic>.from(v as Map))
            .toList();
   ActionDefinition withDisplayName(String displayName) => ActionDefinition(
-    {'id': id, 'name': registeredName, 'inputs': inputs, 'fields': fields},
+    {
+      'id': id,
+      'name': registeredName,
+      'inputs': inputs,
+      'fields': fields,
+      'ticks': ticks,
+    },
     source,
     builtin: builtin,
     displayName: displayName,

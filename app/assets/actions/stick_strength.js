@@ -1,5 +1,5 @@
 registerAction({
-  apiVersion:1,id:'builtin.stickStrength',name:'摇杆渐进调强',inputs:['stick'],
+  apiVersion:1,id:'builtin.stickStrength',name:'摇杆渐进调强',inputs:['stick'],ticks:true,
   fields:[{key:'target',label:'目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]}],
   onEvent(ctx,state) {
     if(ctx.event.type!=='tick') return [];

@@ -3,6 +3,7 @@ registerAction({
   id: 'user.stepStrength',
   name: '点按调强',
   inputs: ['button'],
+  ticks: false,
   fields: [
     { key: 'target', label: '目标通道', type: 'select', default: 'selected', options: [
       { value: 'selected', label: '当前选中' },

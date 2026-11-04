@@ -1,5 +1,5 @@
 registerAction({
-  apiVersion:1,id:'builtin.waveform',name:'切换波形',inputs:['button'],
+  apiVersion:1,id:'builtin.waveform',name:'切换波形',inputs:['button'],ticks:false,
   fields:[
     {key:'target',label:'目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]},
     {key:'mode',label:'选择方式',type:'select',default:'fixed',options:[{value:'fixed',label:'指定波形'},{value:'sequence',label:'顺序轮换'},{value:'random',label:'随机选择'}]},

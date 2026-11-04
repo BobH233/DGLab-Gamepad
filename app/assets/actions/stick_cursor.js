@@ -1,5 +1,5 @@
 registerAction({
-  apiVersion:1,id:'builtin.stickCursor',name:'摇杆移动光标',inputs:['stick'],
+  apiVersion:1,id:'builtin.stickCursor',name:'摇杆移动光标',inputs:['stick'],ticks:true,
   fields:[
     {key:'target',label:'波形目标通道',type:'select',default:'selected',options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]},
     {key:'modifier',label:'触控死区旁路键',type:'select',default:'rightStick',options:[{value:'none',label:'不启用'},{value:'leftStick',label:'L3'},{value:'rightStick',label:'R3'}]}

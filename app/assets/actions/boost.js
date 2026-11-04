@@ -1,5 +1,5 @@
 registerAction({
-  apiVersion: 1, id: 'builtin.boost', name: '一键开火', inputs: ['button'],
+  apiVersion: 1, id: 'builtin.boost', name: '一键开火', inputs: ['button'],ticks:false,
   fields: [
     {key:'target', label:'目标通道', type:'select', default:'selected', options:[{value:'selected',label:'当前选中'},{value:'A',label:'A 通道'},{value:'B',label:'B 通道'}]},
     {key:'mode', label:'触发方式', type:'select', default:'hold', options:[{value:'hold',label:'按住生效'},{value:'toggle',label:'点按切换'}]}

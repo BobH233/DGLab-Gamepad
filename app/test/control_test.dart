@@ -562,4 +562,87 @@ void main() {
     expect(engine.state.overlays, isEmpty);
     expect(engine.state.frame().channels['A']!['intensity'], 80);
   });
+
+  test('ticks only reach actions that declare them', () {
+    final counter = ActionRuntime(r'''
+registerAction({apiVersion:1,id:'user.tickCounter',name:'计数',inputs:['button'],ticks:false,fields:[],
+  onEvent(ctx,state){ if(ctx.event.type==='tick') throw Error('tick'); return []; }});
+''');
+    final legacy = ActionRuntime(r'''
+registerAction({apiVersion:1,id:'user.legacy',name:'旧脚本',inputs:['button'],fields:[],
+  onEvent(ctx,state){ return ctx.event.type==='tick' ? [{type:'adjustBase',channel:'A',value:1}] : []; }});
+''');
+    definitions[counter.definition.id] = counter.definition;
+    definitions[legacy.definition.id] = legacy.definition;
+    counter.dispose();
+    legacy.dispose();
+    expect(definitions['user.tickCounter']!.ticks, isFalse);
+    expect(definitions['user.legacy']!.ticks, isTrue);
+    expect(definitions['builtin.boost']!.ticks, isFalse);
+    expect(definitions['builtin.stickStrength']!.ticks, isTrue);
+
+    engine.configure([
+      const Binding(id: 'south', input: 'south', action: 'user.tickCounter'),
+      const Binding(id: 'east', input: 'east', action: 'user.legacy'),
+    ], definitions);
+    engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
+    engine.tick(Duration.zero);
+    engine.tick(const Duration(milliseconds: 50));
+
+    expect(engine.errors, isEmpty);
+    expect(engine.state.channels['A']!.base, 1);
+  });
+
+  test('ticks rejects non-boolean declarations', () {
+    expect(
+      () => ActionRuntime(r'''
+registerAction({apiVersion:1,id:'user.badTicks',name:'坏',inputs:['button'],ticks:'yes',fields:[],
+  onEvent(){ return []; }});
+'''),
+      throwsFormatException,
+    );
+  });
+
+  test('waveform config is revalidated when the catalog changes', () {
+    configure([
+      binding('south', 'waveform', {'waveform': waveforms[3].id}),
+    ]);
+    final custom = Waveform('custom-x', '自定义', [
+      '0A0A0A0A64646464',
+    ], isCustom: true);
+    setCustomWaveformCatalog([custom]);
+    addTearDown(() => setCustomWaveformCatalog(const []));
+    engine.configure([
+      binding('south', 'waveform', {'waveform': custom.id}),
+    ], definitions);
+    engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
+    input({Control.south: 1});
+    expect(engine.errors, isEmpty);
+    expect(engine.state.channels[engine.state.selected]!.waveform, custom.id);
+
+    setCustomWaveformCatalog(const []);
+    input({});
+    input({Control.south: 1});
+    expect(engine.errors, isNotEmpty);
+  });
+
+  test('scripts still read the shared waveform list from ctx', () {
+    final runtime = ActionRuntime(r'''
+registerAction({apiVersion:1,id:'user.lastWave',name:'最后波形',inputs:['button'],ticks:false,fields:[],
+  onEvent(ctx){
+    if(ctx.event.type!=='press') return [];
+    if(!Object.isFrozen(ctx.waveforms)) throw Error('not frozen');
+    return [{type:'waveform',channel:'A',id:ctx.waveforms[ctx.waveforms.length-1].id}];
+  }});
+''');
+    definitions[runtime.definition.id] = runtime.definition;
+    runtime.dispose();
+    engine.configure([
+      const Binding(id: 'south', input: 'south', action: 'user.lastWave'),
+    ], definitions);
+    engine.input(GamepadState.neutral, live: true, deviceId: 'pad');
+    input({Control.south: 1});
+    expect(engine.errors, isEmpty);
+    expect(engine.state.channels['A']!.waveform, waveforms.last.id);
+  });
 }

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:gamepad_core/gamepad_core.dart';
 import '../scripting/action_runtime.dart';
@@ -10,6 +11,19 @@ class _Slot {
   bool pressed = false;
   double previousValue = 0;
   _Slot(this.binding, this.runtime);
+
+  Map<String, dynamic>? _config;
+  int _configCatalog = -1;
+
+  /// The validated config. It only depends on the binding and the waveform
+  /// catalog, so it is recomputed when the catalog changes, not per event.
+  Map<String, dynamic> config() {
+    if (_config == null || _configCatalog != waveformCatalogRevision) {
+      _config = runtime.definition.validateConfig(binding.config);
+      _configCatalog = waveformCatalogRevision;
+    }
+    return _config!;
+  }
 }
 
 class ControlEngine {
@@ -25,6 +39,8 @@ class ControlEngine {
   bool _live = false;
   String? _deviceId;
   Duration? _lastTick;
+  String _sharedContext = '{}';
+  int _sharedContextCatalog = -1;
   ControlEngine({required this.output, math.Random? random})
     : _random = random ?? math.Random();
 
@@ -152,6 +168,7 @@ class ControlEngine {
     final dt = ((now - previous).inMicroseconds / 1000000).clamp(0.0, 0.1);
     for (final slot in _slots.values.toList()) {
       if (!_live) break;
+      if (!slot.runtime.definition.ticks) continue;
       if (errors.containsKey(slot.binding.id)) continue;
       _invoke(slot, {'type': 'tick', 'dt': dt});
     }
@@ -162,7 +179,7 @@ class ControlEngine {
     try {
       final binding = slot.binding;
       final isLeft = binding.input == 'leftStickVector';
-      final config = slot.runtime.definition.validateConfig(binding.config);
+      final config = slot.config();
       final target = config['target'] == 'A' || config['target'] == 'B'
           ? config['target']
           : state.selected;
@@ -187,12 +204,9 @@ class ControlEngine {
           for (final control in Control.values)
             control.name: _rawInput[control],
         },
-        'waveforms': waveforms
-            .map((w) => {'id': w.id, 'name': w.name})
-            .toList(),
         'grid': {'columns': state.columns, 'count': waveforms.length},
         'random': _random.nextDouble(),
-      });
+      }, shared: _shared());
       state.apply(binding.id, commands);
       if (commands.isNotEmpty &&
           event['type'] != 'tick' &&
@@ -207,6 +221,20 @@ class ControlEngine {
       errors[slot.binding.id] = e.toString();
       stopAll();
     }
+  }
+
+  /// Context fields that only change with the waveform catalog, encoded
+  /// once per catalog revision rather than on every script call.
+  String _shared() {
+    if (_sharedContextCatalog != waveformCatalogRevision) {
+      _sharedContext = jsonEncode({
+        'waveforms': [
+          for (final w in waveforms) {'id': w.id, 'name': w.name},
+        ],
+      });
+      _sharedContextCatalog = waveformCatalogRevision;
+    }
+    return _sharedContext;
   }
 
   void cancel() {

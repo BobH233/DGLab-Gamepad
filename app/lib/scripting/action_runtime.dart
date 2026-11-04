@@ -29,8 +29,12 @@ class ActionRuntime {
     }
   }
 
-  List<dynamic> invoke(Map<String, dynamic> context) {
-    final result = _evaluate('__dispatch(${jsonEncode(context)})');
+  /// Runs the action. [shared] is a JSON object whose fields are merged into
+  /// the context. Callers pass values that rarely change (such as the
+  /// waveform list) here, pre-encoded once, instead of re-serializing them on
+  /// every event.
+  List<dynamic> invoke(Map<String, dynamic> context, {String shared = '{}'}) {
+    final result = _evaluate('__dispatch(${jsonEncode(context)},$shared)');
     if (result.length > 16384) throw const FormatException('脚本返回数据过大');
     final decoded = jsonDecode(result);
     if (decoded is! List || decoded.length > 16) {
@@ -76,6 +80,9 @@ class ActionRuntime {
         inputs.length > 3 ||
         inputs.any((v) => !['button', 'trigger', 'stick'].contains(v))) {
       throw const FormatException('输入类型必须为 button / trigger / stick');
+    }
+    if (data['ticks'] != null && data['ticks'] is! bool) {
+      throw const FormatException('ticks 必须是布尔值');
     }
     final fields = data['fields'];
     if (fields is! List || fields.length > 12) {
@@ -145,10 +152,10 @@ const _bootstrap = r'''
   }, writable:false, configurable:false});
   Object.defineProperty(globalThis,'__describe',{value:()=> {
     if(!action) throw Error('未调用 registerAction');
-    return stringify({apiVersion:action.apiVersion,id:action.id,name:action.name,inputs:action.inputs,fields:action.fields||[]});
+    return stringify({apiVersion:action.apiVersion,id:action.id,name:action.name,inputs:action.inputs,fields:action.fields||[],ticks:action.ticks});
   }});
-  Object.defineProperty(globalThis,'__dispatch',{value:ctx=> {
-    const commands=action.onEvent(deepFreeze(ctx),state);
+  Object.defineProperty(globalThis,'__dispatch',{value:(ctx,shared)=> {
+    const commands=action.onEvent(deepFreeze(Object.assign(ctx,shared)),state);
     if(!Array.isArray(commands) || commands.length>16) throw Error('onEvent 必须同步返回指令数组');
     const result=stringify(commands);
     if(result.length>16384) throw Error('返回数据过大');
