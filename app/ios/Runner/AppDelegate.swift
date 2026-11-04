@@ -4,30 +4,33 @@ import MediaPlayer
 import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var orientationChannel: FlutterMethodChannel?
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-    if let registrar = registrar(forPlugin: "display_orientation") {
-      let channel = FlutterMethodChannel(
-        name: "dglab_gamepad/display_orientation",
-        binaryMessenger: registrar.messenger()
-      )
-      channel.setMethodCallHandler { call, result in
-        guard call.method == "navigationSide" else {
-          result(FlutterMethodNotImplemented)
-          return
-        }
-        result(self.navigationSide())
-      }
-      orientationChannel = channel
-    }
     SilentAudioKeepAlive.shared.start()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // With UIScene the engine is created by the scene's FlutterViewController,
+  // after didFinishLaunching. Plugins and app channels must be registered here.
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    let channel = FlutterMethodChannel(
+      name: "dglab_gamepad/display_orientation",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "navigationSide" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      result(self?.navigationSide())
+    }
+    orientationChannel = channel
   }
 
   private func navigationSide() -> String? {
