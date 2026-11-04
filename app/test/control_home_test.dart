@@ -273,6 +273,14 @@ void main() {
     expect(railRect.width, lessThanOrEqualTo(66));
     expect(railRect.height, lessThan(200));
     expect(tester.getSize(find.byType(LiveWaveformView).first).height, 58);
+    final startAllButton = find.widgetWithText(OutlinedButton, '全部启动');
+    final importPulseButton = find.widgetWithText(OutlinedButton, '导入 .pulse');
+    expect(startAllButton, findsOneWidget);
+    expect(importPulseButton, findsOneWidget);
+    expect(
+      tester.getSize(importPulseButton).height,
+      tester.getSize(startAllButton).height,
+    );
     final dashboard = find.byType(ListView).first;
     final viewport = tester.getRect(dashboard);
     for (final channel in channelIds) {

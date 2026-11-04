@@ -634,6 +634,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
                           : c.maxWidth < 900
                           ? 3
                           : 4,
+                      compact: compactLandscape,
                     ),
                   ),
                   if (desk.engine.errors.isNotEmpty) ...[
@@ -1054,7 +1055,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     );
   }
 
-  Widget _waveforms(int columns) {
+  Widget _waveforms(int columns, {required bool compact}) {
     desk.engine.state.columns = columns;
     final selected = desk.engine.state.selected;
     final channel = desk.engine.state.channels[selected]!;
@@ -1076,7 +1077,14 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
             ),
             OutlinedButton.icon(
               onPressed: _importPulse,
-              icon: const Icon(Icons.file_open_outlined, size: 16),
+              style: compact
+                  ? OutlinedButton.styleFrom(
+                      minimumSize: const Size(0, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : null,
+              icon: Icon(Icons.file_open_outlined, size: compact ? 15 : 16),
               label: const Text('导入 .pulse'),
             ),
           ],
