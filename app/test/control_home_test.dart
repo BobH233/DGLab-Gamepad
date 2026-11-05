@@ -241,6 +241,74 @@ void main() {
     });
   }
 
+  testWidgets('waveform selection and focus preserve preview geometry', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final stream = StreamController<Map<String, dynamic>>();
+    final monitor = InputMonitor(
+      events: stream.stream,
+      observeLifecycle: false,
+    );
+    final desk = ControlDesk(monitor, coyote: _FakeCoyote());
+    await desk.initialize(storage: _MemoryStore(), assets: _LocalAssets());
+    await tester.pumpWidget(MaterialApp(home: ControlHome(desk: desk)));
+
+    Map<String, Rect> previewRects() {
+      final rects = <String, Rect>{};
+      for (final element in find.byType(WaveformView).evaluate()) {
+        final preview = find.byWidget(element.widget);
+        final card = find
+            .ancestor(of: preview, matching: find.byType(InkWell))
+            .first;
+        rects[(element.widget as WaveformView).waveform.id] = tester
+            .getRect(preview)
+            .shift(-tester.getTopLeft(card));
+      }
+      return rects;
+    }
+
+    try {
+      final before = previewRects();
+      expect(before, hasLength(waveforms.length));
+      for (var i = 0; i < waveforms.length; i++) {
+        desk.chooseWaveform(i);
+        await tester.pump();
+        expect(
+          previewRects(),
+          before,
+          reason: 'Selecting ${waveforms[i].name}',
+        );
+        expect(
+          tester
+              .widgetList<WaveformView>(find.byType(WaveformView))
+              .where((view) => view.active)
+              .single
+              .waveform
+              .id,
+          waveforms[i].id,
+        );
+
+        desk.focusWaveform((i + 1) % waveforms.length);
+        await tester.pump();
+        expect(
+          previewRects(),
+          before,
+          reason: 'Moving focus from ${waveforms[i].name}',
+        );
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      desk.dispose();
+      monitor.dispose();
+      unawaited(stream.close());
+      await tester.pump();
+    }
+  });
+
   testWidgets('compact landscape fits both complete channel cards', (
     tester,
   ) async {

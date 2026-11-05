@@ -1168,7 +1168,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: focused ? Palette.yellow : Palette.line,
-            width: focused ? 1.5 : 1,
+            width: 1.5,
           ),
         ),
         child: Column(
