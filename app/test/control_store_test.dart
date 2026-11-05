@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import 'package:dglab_gamepad/input/input_monitor.dart';
 import 'package:dglab_gamepad/control/control_desk.dart';
+import 'package:dglab_gamepad/control/control_state.dart';
 import 'package:dglab_gamepad/control/control_store.dart';
 import 'package:dglab_gamepad/control/models.dart';
 
@@ -139,6 +140,117 @@ void main() {
       await dir.delete(recursive: true);
     }
   });
+  test(
+    'waveform order persists without changing output or cursor targets',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('dglab-waveform-order-');
+      final store = ControlStore(File('${dir.path}/profile.json'));
+      final monitor = InputMonitor(
+        events: const Stream.empty(),
+        observeLifecycle: false,
+      );
+      final desk = ControlDesk(monitor);
+      final restored = ControlDesk(monitor);
+      try {
+        await desk.initialize(storage: store, assets: _Assets());
+        final imported = await desk.importPulseWaveform(
+          'Dungeonlab+pulse:0,1,16=0,0,0,1,1/0-1,100-1',
+          name: '排序测试',
+        );
+        final before = waveforms.map((waveform) => waveform.id).toList();
+        desk.chooseWaveform(3);
+        final state = desk.engine.state;
+        state.channels['A']!.enabled = true;
+        state.channels['A']!.base = 42;
+        state.channels['B']!.waveform = before[6];
+        state.channels['B']!.cursor = 8;
+        state.focusTarget = (
+          area: ControlFocusArea.waveform,
+          channel: 'B',
+          waveformIndex: 8,
+        );
+        final frame = state.frame();
+        final reordered = before.reversed.toList();
+        await desk.reorderWaveforms(reordered);
+
+        expect(waveforms.map((waveform) => waveform.id), reordered);
+        expect(state.frame().channels, frame.channels);
+        expect(waveforms[state.channels['A']!.cursor].id, before[3]);
+        expect(waveforms[state.channels['B']!.cursor].id, before[8]);
+        expect(waveforms[state.focusTarget!.waveformIndex].id, before[8]);
+        expect((await store.read())!['waveformOrder'], reordered);
+
+        await expectLater(
+          desk.reorderWaveforms([before.first]),
+          throwsArgumentError,
+        );
+        expect(waveforms.map((waveform) => waveform.id), reordered);
+        final newer = await desk.importPulseWaveform(
+          'Dungeonlab+pulse:0,1,16=0,0,0,1,1/0-1,50-1',
+          name: '新导入',
+        );
+        expect(waveforms.map((waveform) => waveform.id), [
+          newer.id,
+          ...reordered,
+        ]);
+        await restored.initialize(storage: store, assets: _Assets());
+        expect(restored.ready, isTrue, reason: restored.error);
+        expect(waveforms.map((waveform) => waveform.id), [
+          newer.id,
+          ...reordered,
+        ]);
+        expect(waveforms.last.id, imported.id);
+        expect(restored.engine.state.channels['B']!.waveform, before[6]);
+        expect(restored.engine.state.enabled('A'), isFalse);
+      } finally {
+        desk.dispose();
+        restored.dispose();
+        monitor.dispose();
+        setCustomWaveformCatalog(const []);
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
+  test(
+    'partial saved waveform order skips invalid IDs and appends missing presets',
+    () async {
+      final dir = Directory.systemTemp.createTempSync(
+        'dglab-waveform-partial-',
+      );
+      final store = ControlStore(File('${dir.path}/profile.json'));
+      final first = builtInWaveforms[4].id;
+      await store.save({
+        'version': 6,
+        'waveformOrder': [first, 'missing', first, 23],
+      });
+      final monitor = InputMonitor(
+        events: const Stream.empty(),
+        observeLifecycle: false,
+      );
+      final desk = ControlDesk(monitor);
+      try {
+        await desk.initialize(storage: store, assets: _Assets());
+        expect(desk.ready, isTrue, reason: desk.error);
+        expect(waveforms.map((waveform) => waveform.id), [
+          first,
+          ...builtInWaveforms
+              .where((waveform) => waveform.id != first)
+              .map((waveform) => waveform.id),
+        ]);
+        expect(
+          waveforms[desk.engine.state.channels['A']!.cursor].id,
+          defaultWaveformId,
+        );
+      } finally {
+        desk.dispose();
+        monitor.dispose();
+        setCustomWaveformCatalog(const []);
+        await dir.delete(recursive: true);
+      }
+    },
+  );
+
   test(
     'bad restored bindings are skipped without blocking valid ones',
     () async {

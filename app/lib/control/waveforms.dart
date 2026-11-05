@@ -597,7 +597,10 @@ final waveforms = <Waveform>[...builtInWaveforms];
 /// Incremented whenever [waveforms] changes, so derived data can be cached.
 int waveformCatalogRevision = 0;
 
-void setCustomWaveformCatalog(Iterable<Waveform> custom) {
+void setCustomWaveformCatalog(
+  Iterable<Waveform> custom, {
+  Iterable<String> order = const [],
+}) {
   final builtInIds = builtInWaveforms.map((waveform) => waveform.id).toSet();
   final customIds = <String>{};
   final ordered = <Waveform>[];
@@ -620,5 +623,19 @@ void setCustomWaveformCatalog(Iterable<Waveform> custom) {
     ..clear()
     ..addAll(ordered)
     ..addAll(builtInWaveforms);
+  setWaveformOrder(order);
+}
+
+void setWaveformOrder(Iterable<String> order) {
+  final remaining = {for (final waveform in waveforms) waveform.id: waveform};
+  final ordered = <Waveform>[];
+  for (final id in order) {
+    final waveform = remaining.remove(id);
+    if (waveform != null) ordered.add(waveform);
+  }
+  waveforms
+    ..clear()
+    ..addAll(ordered)
+    ..addAll(remaining.values);
   waveformCatalogRevision++;
 }

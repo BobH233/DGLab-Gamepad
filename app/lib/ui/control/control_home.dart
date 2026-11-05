@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_reorderable_grid_view/entities/reorderable_animation_config.dart';
+import 'package:flutter_reorderable_grid_view/widgets/widgets.dart';
 import 'package:gamepad_core/gamepad_core.dart';
 import '../../control/control_desk.dart';
 import '../../control/control_state.dart';
@@ -32,11 +35,14 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
   bool _focusScrollScheduled = false;
   bool _openingTouch = false;
   bool _railSideRefreshScheduled = false;
+  bool _draggingWaveform = false;
   NavigationRailSide? _platformRailSide;
   final Map<String, GlobalKey> _channelKeys = {
     for (final id in channelIds) id: GlobalKey(),
   };
   final Map<String, GlobalKey> _waveformKeys = {};
+  final _waveformGridKey = GlobalKey();
+  final _dashboardKey = GlobalKey();
   ControlDesk get desk => widget.desk;
 
   @override
@@ -122,13 +128,21 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     final request = desk.engine.state.focusRequest;
     if (request == _lastFocusRequest) return;
     _lastFocusRequest = request;
-    if (!desk.autoScrollToAction || page != 0 || _focusScrollScheduled) {
+    if (!desk.autoScrollToAction ||
+        page != 0 ||
+        _focusScrollScheduled ||
+        _draggingWaveform) {
       return;
     }
     _focusScrollScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusScrollScheduled = false;
-      if (!mounted || !desk.autoScrollToAction || page != 0) return;
+      if (!mounted ||
+          !desk.autoScrollToAction ||
+          page != 0 ||
+          _draggingWaveform) {
+        return;
+      }
       final target = desk.engine.state.focusTarget;
       if (target != null) unawaited(_revealFocus(target));
     });
@@ -150,8 +164,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     final targetContext = key?.currentContext;
     if (targetContext == null) return;
     final targetBox = targetContext.findRenderObject();
-    final scrollable = Scrollable.of(targetContext);
-    final viewportBox = scrollable.context.findRenderObject();
+    final viewportBox = _dashboardKey.currentContext?.findRenderObject();
     if (targetBox is! RenderBox || viewportBox is! RenderBox) return;
     final top = targetBox.localToGlobal(Offset.zero, ancestor: viewportBox).dy;
     final bottom = targetBox
@@ -191,6 +204,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
       _waveformKeys.putIfAbsent(id, GlobalKey.new);
 
   Future<void> _importPulse() async {
+    if (_draggingWaveform) return;
     try {
       final file = await openFile(
         acceptedTypeGroups: [
@@ -616,6 +630,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
 
   Widget _dashboard(BuildContext context, {required bool compactLandscape}) =>
       ListView(
+        key: _dashboardKey,
         padding: compactLandscape
             ? const EdgeInsets.fromLTRB(16, 2, 16, 10)
             : const EdgeInsets.fromLTRB(24, 8, 24, 24),
@@ -1091,6 +1106,8 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     desk.engine.state.columns = columns;
     final selected = desk.engine.state.selected;
     final channel = desk.engine.state.channels[selected]!;
+    final ids = waveforms.map((waveform) => waveform.id).toList();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1122,27 +1139,79 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
           ],
         ),
         const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const gap = 12.0;
-            final width =
-                (constraints.maxWidth - gap * (columns - 1)) / columns;
-            return Wrap(
-              spacing: gap,
-              runSpacing: gap,
-              children: [
-                for (var i = 0; i < waveforms.length; i++)
-                  SizedBox(
-                    width: width,
-                    height: 115,
-                    child: _waveformCard(i, channel),
-                  ),
-              ],
-            );
-          },
+        ReorderableBuilder<String>(
+          longPressDelay: const Duration(milliseconds: 450),
+          automaticScrollExtent: 72,
+          onDragStarted: (_) => _draggingWaveform = true,
+          onDragEnd: (_) => _draggingWaveform = false,
+          onReorder: (reorder) =>
+              unawaited(desk.reorderWaveforms(reorder(ids))),
+          dragChildBoxDecoration: const BoxDecoration(),
+          animationConfig: ReorderableAnimationConfig(
+            enableAnimations: !reduceMotion,
+            defaultAnimationCurve: Curves.easeOutCubic,
+            positionChangeDuration: const Duration(milliseconds: 200),
+            draggingPositionChangeDuration: const Duration(milliseconds: 200),
+            releasedItemDuration: const Duration(milliseconds: 220),
+            insert: const ReorderableItemTransition(duration: Duration.zero),
+            remove: const ReorderableItemTransition(duration: Duration.zero),
+            dragFeedback: ReorderableItemTransition(
+              duration: const Duration(milliseconds: 160),
+              builder: (child, animation) => MediaQuery.withNoTextScaling(
+                child: reduceMotion
+                    ? child
+                    : _WaveformDragLift(animation: animation, child: child),
+              ),
+            ),
+          ),
+          builder: (children) => GridView(
+            key: _waveformGridKey,
+            padding: EdgeInsets.zero,
+            primary: false,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: columns,
+              mainAxisExtent: 115,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            children: [
+              for (final (i, child) in children.indexed)
+                KeyedSubtree(key: _waveformKey(ids[i]), child: child),
+            ],
+          ),
+          children: [
+            for (var i = 0; i < waveforms.length; i++)
+              SizedBox(
+                key: ValueKey(waveforms[i].id),
+                child: Semantics(
+                  selected: waveforms[i].id == channel.waveform,
+                  customSemanticsActions: {
+                    if (i > 0)
+                      const CustomSemanticsAction(label: '向前移动'): () =>
+                          _moveWaveform(ids[i], -1),
+                    if (i < waveforms.length - 1)
+                      const CustomSemanticsAction(label: '向后移动'): () =>
+                          _moveWaveform(ids[i], 1),
+                  },
+                  child: _waveformCard(i, channel),
+                ),
+              ),
+          ],
         ),
       ],
     );
+  }
+
+  void _moveWaveform(String id, int delta) {
+    if (_draggingWaveform) return;
+    final order = waveforms.map((waveform) => waveform.id).toList();
+    final from = order.indexOf(id);
+    final to = (from + delta).clamp(0, order.length - 1);
+    if (from < 0 || from == to) return;
+    order.insert(to, order.removeAt(from));
+    unawaited(desk.reorderWaveforms(order));
   }
 
   Widget _waveformCard(int i, ChannelState channel) {
@@ -1150,8 +1219,8 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
         current = w.id == channel.waveform,
         focused = i == channel.cursor;
     return InkWell(
-      key: _waveformKey(w.id),
       onTap: () {
+        if (_draggingWaveform) return;
         if (w.id != channel.waveform) _selectionHaptic();
         desk.chooseWaveform(i);
       },
@@ -1218,6 +1287,29 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+class _WaveformDragLift extends StatelessWidget {
+  final Animation<double> animation;
+  final Widget child;
+
+  const _WaveformDragLift({required this.animation, required this.child});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: animation,
+    child: child,
+    builder: (context, child) => Transform.scale(
+      scale: 1 + 0.035 * animation.value,
+      child: PhysicalModel(
+        color: Palette.surface,
+        shadowColor: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(10),
+        elevation: 12 * animation.value,
+        child: child,
+      ),
+    ),
+  );
 }
 
 class _PulseImportDialog extends StatefulWidget {

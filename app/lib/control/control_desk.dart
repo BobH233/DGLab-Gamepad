@@ -6,6 +6,7 @@ import '../coyote/coyote_controller.dart';
 import '../input/input_monitor.dart';
 import '../scripting/action_runtime.dart';
 import 'control_engine.dart';
+import 'control_state.dart';
 import 'control_store.dart';
 import 'models.dart';
 import 'output_waveform_trace.dart';
@@ -121,6 +122,9 @@ class ControlDesk extends ChangeNotifier {
           }
           customWaveforms = restoredWaveforms;
           setCustomWaveformCatalog(customWaveforms);
+          if (saved['waveformOrder'] case final List<dynamic> order) {
+            setWaveformOrder(order.whereType<String>());
+          }
           final scriptNames = switch (saved['scriptNames']) {
             final Map<dynamic, dynamic> names => names,
             _ => const <dynamic, dynamic>{},
@@ -387,6 +391,7 @@ class ControlDesk extends ChangeNotifier {
       await store?.save({
         'version': 6,
         'autoScrollToAction': autoScrollToAction,
+        'waveformOrder': waveforms.map((waveform) => waveform.id).toList(),
         'bindings': bindings.map((b) => b.toJson()).toList(),
         'customWaveforms': customWaveforms
             .map((waveform) => waveform.toJson())
@@ -693,6 +698,39 @@ class ControlDesk extends ChangeNotifier {
     unawaited(save());
   }
 
+  Future<void> reorderWaveforms(List<String> order) async {
+    final ids = waveforms.map((waveform) => waveform.id).toSet();
+    if (order.length != ids.length ||
+        order.toSet().length != ids.length ||
+        !order.every(ids.contains)) {
+      throw ArgumentError.value(order, 'order', '波形顺序必须包含全部波形');
+    }
+    if (listEquals(order, waveforms.map((waveform) => waveform.id).toList())) {
+      return;
+    }
+    final cursors = {
+      for (final entry in engine.state.channels.entries)
+        entry.key: waveforms[entry.value.cursor].id,
+    };
+    final focus = engine.state.focusTarget;
+    final focusedId = focus?.area == ControlFocusArea.waveform
+        ? waveforms[focus!.waveformIndex].id
+        : null;
+    setWaveformOrder(order);
+    for (final entry in cursors.entries) {
+      engine.state.channels[entry.key]!.cursor = order.indexOf(entry.value);
+    }
+    if (focusedId != null) {
+      engine.state.focusTarget = (
+        area: ControlFocusArea.waveform,
+        channel: focus!.channel,
+        waveformIndex: order.indexOf(focusedId),
+      );
+    }
+    _notify();
+    await save();
+  }
+
   Future<Waveform> importPulseWaveform(
     String source, {
     required String name,
@@ -722,7 +760,10 @@ class ControlDesk extends ChangeNotifier {
       isCustom: true,
     );
     final next = [waveform, ...customWaveforms];
-    setCustomWaveformCatalog(next);
+    setCustomWaveformCatalog(
+      next,
+      order: [id, ...waveforms.map((waveform) => waveform.id)],
+    );
     customWaveforms = next;
     _applyWaveform(id);
     await save();

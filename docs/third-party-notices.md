@@ -12,3 +12,10 @@
 - Source: https://github.com/PhilipsHue/flutter_reactive_ble
 - Used by: `app/lib/coyote/coyote_controller.dart`
 - License: BSD 3-Clause. See https://github.com/PhilipsHue/flutter_reactive_ble/blob/master/LICENSE
+
+## flutter_reorderable_grid_view
+
+- Source: https://github.com/karvulf/flutter-reorderable-grid-view
+- Version: `5.10.0`
+- Used by: waveform preset drag sorting in `app/lib/ui/control/control_home.dart`, following the upstream outer-scrollable grid example.
+- License: BSD 3-Clause. See https://github.com/karvulf/flutter-reorderable-grid-view/blob/master/LICENSE

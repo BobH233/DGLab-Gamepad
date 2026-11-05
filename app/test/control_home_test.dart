@@ -73,8 +73,9 @@ void main() {
       expect(find.text('应用选中'), findsNothing);
       expect(find.byTooltip('打开 A 通道触控'), findsOneWidget);
       expect(find.byTooltip('打开 B 通道触控'), findsOneWidget);
-      expect(find.byType(GridView), findsNothing);
-      expect(find.byType(Scrollable), findsOneWidget);
+      final grid = tester.widget<GridView>(find.byType(GridView));
+      expect(grid.physics, isA<NeverScrollableScrollPhysics>());
+      expect(grid.shrinkWrap, isTrue);
       expect(
         find.byWidgetPredicate(
           (widget) =>
@@ -674,10 +675,9 @@ void main() {
     };
 
     final dashboard = find.byType(ListView).first;
-    final scrollable = find.descendant(
-      of: dashboard,
-      matching: find.byType(Scrollable),
-    );
+    final scrollable = find
+        .descendant(of: dashboard, matching: find.byType(Scrollable))
+        .first;
     final position = tester.state<ScrollableState>(scrollable).position;
     final viewport = tester.getRect(dashboard);
     stream.add(snapshot({}));

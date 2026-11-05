@@ -182,6 +182,14 @@ packages:
       url: "https://pub.flutter-io.cn"
     source: hosted
     version: "5.4.2"
+  flutter_reorderable_grid_view:
+    dependency: transitive
+    description:
+      name: flutter_reorderable_grid_view
+      sha256: "96fa216fb9745d8b6a1fc00c24b1e335b4440cf66fab44e9dfc9ba27223bf114"
+      url: "https://pub.flutter-io.cn"
+    source: hosted
+    version: "5.10.0"
   flutter_test:
     dependency: transitive
     description: flutter
