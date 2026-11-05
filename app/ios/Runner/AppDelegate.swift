@@ -1,6 +1,5 @@
 import AVFoundation
 import Flutter
-import MediaPlayer
 import UIKit
 
 @main
@@ -122,23 +121,13 @@ final class SilentAudioKeepAlive: NSObject {
   private var wanted = false
   private var graceTask: UIBackgroundTaskIdentifier = .invalid
 
-  private var engine = AVAudioEngine()
-  private let player = AVAudioPlayerNode()
+  private var engine: AVAudioEngine?
+  private var player: AVAudioPlayerNode?
+  private var buffer: AVAudioPCMBuffer?
   private let format = AVAudioFormat(
     standardFormatWithSampleRate: 44_100,
     channels: 1
   )!
-  private lazy var buffer: AVAudioPCMBuffer? = {
-    guard
-      let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100),
-      let channels = buffer.floatChannelData
-    else { return nil }
-    buffer.frameLength = 44_100
-    for channel in 0..<Int(format.channelCount) {
-      memset(channels[channel], 0, Int(buffer.frameLength) * MemoryLayout<Float>.size)
-    }
-    return buffer
-  }()
   private var retryWork: DispatchWorkItem?
   private var retryAttempt = 0
   private static let maxRetryDelay: TimeInterval = 30
@@ -147,7 +136,6 @@ final class SilentAudioKeepAlive: NSObject {
 
   private override init() {
     super.init()
-    attachPlayer()
     let center = NotificationCenter.default
     let session = AVAudioSession.sharedInstance()
     center.addObserver(
@@ -164,7 +152,6 @@ final class SilentAudioKeepAlive: NSObject {
     center.addObserver(
       self, selector: #selector(handleDidBecomeActive(_:)),
       name: UIApplication.didBecomeActiveNotification, object: nil)
-    observeEngineConfiguration()
   }
 
   // MARK: Public control
@@ -180,8 +167,8 @@ final class SilentAudioKeepAlive: NSObject {
     wanted = false
     cancelRetry()
     state = .idle
-    player.stop()
-    engine.stop()
+    player?.stop()
+    engine?.stop()
     do {
       // Let audio from other apps return to full volume or resume.
       try AVAudioSession.sharedInstance().setActive(
@@ -197,15 +184,19 @@ final class SilentAudioKeepAlive: NSObject {
   /// Safe to call repeatedly from any recovery signal.
   private func recover() {
     guard wanted else { return }
-    if state == .running && engine.isRunning && player.isPlaying { return }
+    if state == .running && engine?.isRunning == true && player?.isPlaying == true { return }
     do {
       let session = AVAudioSession.sharedInstance()
-      try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+      // Configure mixing before creating any audio graph or output node.
+      if session.category != .playback || session.mode != .default
+        || session.categoryOptions != [.mixWithOthers] {
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+      }
       try session.setActive(true)
+      try prepareEngine()
       try play()
       cancelRetry()
       state = .running
-      hideNowPlaying()
     } catch {
       NSLog("Background audio recovery failed: \(error)")
       state = .interrupted
@@ -214,7 +205,7 @@ final class SilentAudioKeepAlive: NSObject {
   }
 
   private func play() throws {
-    guard let buffer else { throw KeepAliveError.bufferUnavailable }
+    guard let engine, let player, let buffer else { throw KeepAliveError.bufferUnavailable }
     player.stop()
     if !engine.isRunning {
       engine.prepare()
@@ -267,8 +258,8 @@ final class SilentAudioKeepAlive: NSObject {
         self.state = .interrupted
         self.scheduleRetry()
       case .ended:
-        // Resume even without .shouldResume: silent audio never conflicts
-        // with what the user is listening to.
+        // The BLE connection still requests background execution; recovery
+        // reasserts mixing before restarting the silent output.
         self.cancelRetry()
         self.recover()
       @unknown default:
@@ -290,8 +281,10 @@ final class SilentAudioKeepAlive: NSObject {
   }
 
   @objc private func handleConfigurationChange(_ notification: Notification) {
+    let changedEngine = notification.object as? AVAudioEngine
     DispatchQueue.main.async { [weak self] in
-      guard let self, self.wanted else { return }
+      guard let self, self.wanted, let changedEngine,
+        changedEngine === self.engine else { return }
       // The engine stops itself on configuration changes.
       self.state = .interrupted
       self.recover()
@@ -301,8 +294,7 @@ final class SilentAudioKeepAlive: NSObject {
   @objc private func handleRouteChange(_ notification: Notification) {
     DispatchQueue.main.async { [weak self] in
       guard let self, self.wanted else { return }
-      self.hideNowPlaying()
-      if !self.engine.isRunning || !self.player.isPlaying {
+      if self.engine?.isRunning != true || self.player?.isPlaying != true {
         self.state = .interrupted
         self.recover()
       }
@@ -312,7 +304,7 @@ final class SilentAudioKeepAlive: NSObject {
   @objc private func handleDidBecomeActive(_ notification: Notification) {
     guard wanted else { return }
     cancelRetry()
-    if state == .running && (!engine.isRunning || !player.isPlaying) {
+    if state == .running && (engine?.isRunning != true || player?.isPlaying != true) {
       state = .interrupted
     }
     recover()
@@ -320,26 +312,38 @@ final class SilentAudioKeepAlive: NSObject {
 
   // MARK: Engine lifecycle
 
-  private func attachPlayer() {
+  private func prepareEngine() throws {
+    guard engine == nil else { return }
+    guard
+      let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 44_100),
+      let channels = buffer.floatChannelData
+    else { throw KeepAliveError.bufferUnavailable }
+    buffer.frameLength = 44_100
+    for channel in 0..<Int(format.channelCount) {
+      memset(channels[channel], 0, Int(buffer.frameLength) * MemoryLayout<Float>.size)
+    }
+    let engine = AVAudioEngine()
+    let player = AVAudioPlayerNode()
     engine.attach(player)
     engine.connect(player, to: engine.mainMixerNode, format: format)
-  }
-
-  private func observeEngineConfiguration() {
+    self.engine = engine
+    self.player = player
+    self.buffer = buffer
     NotificationCenter.default.addObserver(
       self, selector: #selector(handleConfigurationChange(_:)),
       name: .AVAudioEngineConfigurationChange, object: engine)
   }
 
   private func rebuildEngine() {
-    NotificationCenter.default.removeObserver(
-      self, name: .AVAudioEngineConfigurationChange, object: engine)
-    player.stop()
-    engine.stop()
-    engine.detach(player)
-    engine = AVAudioEngine()
-    attachPlayer()
-    observeEngineConfiguration()
+    if let engine {
+      NotificationCenter.default.removeObserver(
+        self, name: .AVAudioEngineConfigurationChange, object: engine)
+    }
+    // Media-services resets invalidate the player as well as the engine.
+    // Recreate both only after recover() configures the mixable session.
+    player = nil
+    engine = nil
+    buffer = nil
   }
 
   private func beginGracePeriod() {
@@ -357,21 +361,6 @@ final class SilentAudioKeepAlive: NSObject {
     guard graceTask != .invalid else { return }
     UIApplication.shared.endBackgroundTask(graceTask)
     graceTask = .invalid
-  }
-
-  private func hideNowPlaying() {
-    let center = MPNowPlayingInfoCenter.default()
-    center.nowPlayingInfo = nil
-    center.playbackState = .stopped
-    let commands = MPRemoteCommandCenter.shared()
-    for command in [
-      commands.playCommand, commands.pauseCommand, commands.stopCommand,
-      commands.togglePlayPauseCommand, commands.nextTrackCommand,
-      commands.previousTrackCommand, commands.changePlaybackPositionCommand,
-      commands.skipForwardCommand, commands.skipBackwardCommand,
-    ] {
-      command.isEnabled = false
-    }
   }
 
   private enum KeepAliveError: Error {
