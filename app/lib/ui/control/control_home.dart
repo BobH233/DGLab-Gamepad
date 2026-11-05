@@ -36,12 +36,16 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
   bool _openingTouch = false;
   bool _railSideRefreshScheduled = false;
   bool _draggingWaveform = false;
+  Widget? _activeWaveformGrid;
   NavigationRailSide? _platformRailSide;
   final Map<String, GlobalKey> _channelKeys = {
     for (final id in channelIds) id: GlobalKey(),
   };
-  final Map<String, GlobalKey> _waveformKeys = {};
-  final _waveformGridKey = GlobalKey();
+  final Map<int, GlobalKey> _waveformSlotKeys = {};
+  GlobalKey _waveformGridKey = GlobalKey();
+  Key _waveformReorderKey = UniqueKey();
+  Set<String> _waveformCatalogIds = {};
+  int? _waveformColumns;
   final _dashboardKey = GlobalKey();
   ControlDesk get desk => widget.desk;
 
@@ -158,7 +162,7 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
       ControlFocusArea.channel => _channelKeys[target.channel],
       ControlFocusArea.waveform =>
         target.waveformIndex >= 0 && target.waveformIndex < waveforms.length
-            ? _waveformKey(waveforms[target.waveformIndex].id)
+            ? _waveformSlotKey(target.waveformIndex)
             : null,
     };
     final targetContext = key?.currentContext;
@@ -200,8 +204,8 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     desk.toggleAllChannels();
   }
 
-  GlobalKey _waveformKey(String id) =>
-      _waveformKeys.putIfAbsent(id, GlobalKey.new);
+  GlobalKey _waveformSlotKey(int index) =>
+      _waveformSlotKeys.putIfAbsent(index, GlobalKey.new);
 
   Future<void> _importPulse() async {
     if (_draggingWaveform) return;
@@ -1107,7 +1111,6 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
     final selected = desk.engine.state.selected;
     final channel = desk.engine.state.channels[selected]!;
     final ids = waveforms.map((waveform) => waveform.id).toList();
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1139,69 +1142,102 @@ class _ControlHomeState extends State<ControlHome> with WidgetsBindingObserver {
           ],
         ),
         const SizedBox(height: 12),
-        ReorderableBuilder<String>(
-          longPressDelay: const Duration(milliseconds: 450),
-          automaticScrollExtent: 72,
-          onDragStarted: (_) => _draggingWaveform = true,
-          onDragEnd: (_) => _draggingWaveform = false,
-          onReorder: (reorder) =>
-              unawaited(desk.reorderWaveforms(reorder(ids))),
-          dragChildBoxDecoration: const BoxDecoration(),
-          animationConfig: ReorderableAnimationConfig(
-            enableAnimations: !reduceMotion,
-            defaultAnimationCurve: Curves.easeOutCubic,
-            positionChangeDuration: const Duration(milliseconds: 200),
-            draggingPositionChangeDuration: const Duration(milliseconds: 200),
-            releasedItemDuration: const Duration(milliseconds: 220),
-            insert: const ReorderableItemTransition(duration: Duration.zero),
-            remove: const ReorderableItemTransition(duration: Duration.zero),
-            dragFeedback: ReorderableItemTransition(
-              duration: const Duration(milliseconds: 160),
-              builder: (child, animation) => MediaQuery.withNoTextScaling(
-                child: reduceMotion
-                    ? child
-                    : _WaveformDragLift(animation: animation, child: child),
-              ),
-            ),
-          ),
-          builder: (children) => GridView(
-            key: _waveformGridKey,
-            padding: EdgeInsets.zero,
-            primary: false,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              mainAxisExtent: 115,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            children: [
-              for (final (i, child) in children.indexed)
-                KeyedSubtree(key: _waveformKey(ids[i]), child: child),
-            ],
-          ),
-          children: [
-            for (var i = 0; i < waveforms.length; i++)
-              SizedBox(
-                key: ValueKey(waveforms[i].id),
-                child: Semantics(
-                  selected: waveforms[i].id == channel.waveform,
-                  customSemanticsActions: {
-                    if (i > 0)
-                      const CustomSemanticsAction(label: '向前移动'): () =>
-                          _moveWaveform(ids[i], -1),
-                    if (i < waveforms.length - 1)
-                      const CustomSemanticsAction(label: '向后移动'): () =>
-                          _moveWaveform(ids[i], 1),
-                  },
-                  child: _waveformCard(i, channel),
-                ),
-              ),
-          ],
-        ),
+        _activeWaveformGrid ?? _buildWaveformGrid(columns, ids, channel),
       ],
     );
+  }
+
+  Widget _buildWaveformGrid(
+    int columns,
+    List<String> ids,
+    ChannelState channel,
+  ) {
+    // Added/removed presets and new column counts invalidate measured slots.
+    if (_waveformColumns != columns ||
+        _waveformCatalogIds.length != ids.length ||
+        !_waveformCatalogIds.containsAll(ids)) {
+      _waveformColumns = columns;
+      _waveformCatalogIds = ids.toSet();
+      _waveformReorderKey = UniqueKey();
+      _waveformGridKey = GlobalKey();
+      _waveformSlotKeys.clear();
+    }
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    late final Widget grid;
+    // ReorderableBuilder resets its position map when its children are replaced.
+    // Keep this widget for the gesture so live desk updates cannot reset it.
+    grid = ReorderableBuilder<String>(
+      key: _waveformReorderKey,
+      longPressDelay: const Duration(milliseconds: 450),
+      automaticScrollExtent: 72,
+      onDragStarted: (_) {
+        _draggingWaveform = true;
+        _activeWaveformGrid = grid;
+      },
+      onDragEnd: (_) {
+        if (!mounted) return;
+        setState(() {
+          _draggingWaveform = false;
+          _activeWaveformGrid = null;
+        });
+      },
+      onReorder: (reorder) => unawaited(desk.reorderWaveforms(reorder(ids))),
+      dragChildBoxDecoration: const BoxDecoration(),
+      animationConfig: ReorderableAnimationConfig(
+        enableAnimations: !reduceMotion,
+        defaultAnimationCurve: Curves.easeOutCubic,
+        positionChangeDuration: const Duration(milliseconds: 200),
+        draggingPositionChangeDuration: const Duration(milliseconds: 200),
+        releasedItemDuration: const Duration(milliseconds: 220),
+        insert: const ReorderableItemTransition(duration: Duration.zero),
+        remove: const ReorderableItemTransition(duration: Duration.zero),
+        dragFeedback: ReorderableItemTransition(
+          duration: const Duration(milliseconds: 160),
+          builder: (child, animation) => MediaQuery.withNoTextScaling(
+            child: reduceMotion
+                ? child
+                : _WaveformDragLift(animation: animation, child: child),
+          ),
+        ),
+      ),
+      builder: (children) => GridView(
+        key: _waveformGridKey,
+        padding: EdgeInsets.zero,
+        primary: false,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisExtent: 115,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+        ),
+        children: [
+          // Reveal anchors follow slots; the package tracks waveform identity.
+          for (final (i, child) in children.indexed)
+            KeyedSubtree(key: _waveformSlotKey(i), child: child),
+        ],
+      ),
+      children: [
+        for (var i = 0; i < waveforms.length; i++)
+          SizedBox(
+            key: ValueKey(waveforms[i].id),
+            child: Semantics(
+              selected: waveforms[i].id == channel.waveform,
+              customSemanticsActions: {
+                if (i > 0)
+                  const CustomSemanticsAction(label: '向前移动'): () =>
+                      _moveWaveform(ids[i], -1),
+                if (i < waveforms.length - 1)
+                  const CustomSemanticsAction(label: '向后移动'): () =>
+                      _moveWaveform(ids[i], 1),
+              },
+              child: _waveformCard(i, channel),
+            ),
+          ),
+      ],
+    );
+    return grid;
   }
 
   void _moveWaveform(String id, int delta) {
